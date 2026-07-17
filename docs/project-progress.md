@@ -1,16 +1,19 @@
 # PauseNow 项目进度
 
-> 最后更新：2026-07-16  
-> 当前主线：Android 优先，Flutter + Kotlin  
+> 最后更新：2026-07-17  
+> 当前主线：Android 优先，纯 Kotlin 原生（Kotlin + Jetpack Compose）  
 > 当前阶段：阶段 1“权限与前台事件 Spike”
 
 ## 当前结论
 
-阶段 1 的代码、最小验证 UI、自动化测试和真机采证脚本已经交付。当前不能宣称阶段完成，因为本机尚未连接安卓真机，3 台设备的授权、识别成功率和耗电证据仍待采集。
+阶段 1 已由原 Flutter+Kotlin 方案切换为**纯 Kotlin 原生**方案：移除 Flutter 与 MethodChannel/EventChannel 桥接，UI 改用 Jetpack Compose，事件经单进程 `ForegroundEventBus` 直接投递到 UI。代码、最小验证 UI、自动化测试和真机采证脚本已经交付。当前不能宣称阶段完成，因为本机尚未连接安卓真机，3 台设备的授权、识别成功率和耗电证据仍待采集。
+
+**模拟器冒烟验证（2026-07-17）**：在 Windows 10 + AOSP x86_64 模拟器（API 36，WHPX 加速）上完成机制冒烟：无障碍服务稳定捕获前台包名事件，`run-stage1-device-check.ps1` 报告 `passed=true`（20 次启动、全部检出、0 漏检）。此结果仅证明“机制可用”，**不计入阶段门**——模拟器为单一 AOSP 厂商、无 OEM 杀后台风险、无法做耗电观察，阶段门仍需 3 台不同厂商真机。过程中修复采证脚本两个 bug：`Invoke-Adb` 在 `$ErrorActionPreference=Stop` 下被 stderr 触发 `NativeCommandError`；以及 PowerShell `ValueFromRemainingArguments` 会吞掉以 `-` 开头的参数（`-p`/`-d` 丢失，导致 monkey 乱开应用、`logcat -d` 变为 follow 模式卡死）——已改为显式数组传参。
 
 ## 已完成
 
-- Flutter Android 工程骨架；
+- 纯 Kotlin 原生 Android 工程骨架（Gradle Kotlin DSL，无 Flutter 插件）；
+- Jetpack Compose 权限状态与事件验证 UI（`SpikeScreen` + `SpikeViewModel`）；
 - Usage Access 授权状态查询与设置跳转；
 - Accessibility 授权状态查询与设置跳转；
 - 无障碍醒目披露与用户确认门槛；
@@ -20,17 +23,16 @@
 - 自身包与已知系统界面排除；
 - 同一前台会话包名事件去重；
 - Logcat 包名事件；
-- 本地最近 50 条事件与 Flutter 实时事件流；
-- Dart 与 Kotlin 测试代码；
+- 本地最近 50 条事件与单进程实时事件总线（替代 EventChannel）；
+- 一键复制本地验收 JSON；
+- Kotlin 去抖/排除策略/事件总线单元测试；
 - 20 次重复启动、95% 阈值和证据落盘脚本；
 - 阶段 1 真机验收说明。
 
 ## 待完成
 
-- 由设备所有者确认 Android SDK 许可协议并安装 API 36/ADB；
-- `flutter analyze`；
-- `flutter test`；
-- Kotlin 单元测试与 Debug APK 构建；
+- 由设备所有者确认 Android SDK 许可协议并安装 API 36/Build Tools/ADB；
+- `gradlew testDebugUnitTest`、`gradlew lintDebug`、`gradlew assembleDebug` 本机通过；
 - 安卓真机连接与 APK 安装；
 - 3 台不同设备逐台达到 ≥95% 包名识别成功率；
 - 2 小时使用与 8 小时待机耗电观察。
@@ -63,4 +65,4 @@
 | 用户不愿授权无障碍 | 待用户验证 | 明确披露、最小权限、可随时关闭 |
 | 服务被系统回收 | 待长时测试 | 先观察，不预设前台服务 |
 | 误采页面内容 | 已控制 | `canRetrieveWindowContent=false`，代码不访问节点/文字 |
-| 环境工具不完整 | 部分完成 | JDK 17、Flutter、Command-line Tools 已安装；SDK 许可待所有者确认 |
+| 环境工具不完整 | 部分完成 | JDK 17、Command-line Tools 已安装；SDK 许可与 API 36/Build Tools 待所有者确认 |

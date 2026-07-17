@@ -1,7 +1,7 @@
 # 阶段 1：权限与前台事件 Spike 验证
 
-> 状态：代码与自动化已完成，等待安卓真机采证  
-> 更新日期：2026-07-16  
+> 状态：代码与自动化已完成（纯 Kotlin 原生），等待安卓真机采证  
+> 更新日期：2026-07-17  
 > 应用 ID：`com.pausenow.app`
 
 ## 1. 本阶段目标
@@ -21,11 +21,11 @@
 
 ## 2. 已实现
 
-- Flutter 权限状态页；
+- Jetpack Compose 权限状态与事件验证 UI（`SpikeScreen` + `SpikeViewModel`）；
 - 返回 App 后自动刷新 Usage Access 与 Accessibility 状态；
 - 无障碍权限醒目披露，未勾选确认时不能跳转授权；
-- `MethodChannel` 权限与本地事件查询；
-- `EventChannel` 实时包名事件；
+- `AndroidPermissionGateway` 权限与本地事件查询（单进程直调，无 MethodChannel）；
+- 单进程事件总线 `ForegroundEventBus` 实时包名事件；
 - `AccessibilityService` 仅监听 `TYPE_WINDOW_STATE_CHANGED`；
 - `canRetrieveWindowContent=false`；
 - 自身包、System UI、设置、权限控制器和常见桌面包排除；
@@ -34,11 +34,10 @@
 - Logcat 输出时间、事件类型与包名；
 - 设备型号、Android/API、构建号与 App 版本证据；
 - 一键复制本地验收 JSON；
-- Dart 模型/Widget 测试；
-- Kotlin 去抖/排除策略测试；
+- Kotlin 去抖/排除策略/事件总线单元测试；
 - 单机重复打开与成功率计算脚本。
 
-项目未声明 `QUERY_ALL_PACKAGES`、联网权限（仅 Debug/Profile 由 Flutter 调试模板需要）或悬浮窗权限。
+项目（含 Debug/Profile 变体）未声明 `QUERY_ALL_PACKAGES`、联网权限或悬浮窗权限。
 
 ## 3. 隐私核对
 
@@ -70,27 +69,27 @@ packageName
 ## 4. 构建前环境
 
 ```powershell
-flutter --version
 java -version
 adb version
-flutter doctor -v
+cd android
+.\gradlew.bat --version
 ```
 
-项目基线：Flutter 3.44.x、JDK 17、compileSdk/targetSdk 36、minSdk 26。
+项目基线：Kotlin 2.3.20、AGP 9.0.1、JDK 17、compileSdk/targetSdk 36、minSdk 26、Jetpack Compose。
 
 首次准备：
 
 ```powershell
-flutter pub get
-flutter analyze
-flutter test
-flutter build apk --debug
+cd android
+.\gradlew.bat testDebugUnitTest
+.\gradlew.bat lintDebug
+.\gradlew.bat assembleDebug
 ```
 
 APK 默认输出：
 
 ```text
-build/app/outputs/flutter-apk/app-debug.apk
+android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
 ## 5. 单机验证步骤
@@ -147,8 +146,8 @@ adb shell pm list packages | Select-String "aweme|douyin"
 - [x] 包名日志、本地记录、排除与去抖已实现；
 - [x] 不读取页面内容；
 - [x] 自动采证脚本已实现；
-- [ ] Flutter 静态检查通过；
-- [ ] Dart 与 Kotlin 测试通过；
+- [ ] Android lint 通过；
+- [ ] Kotlin 单元测试通过；
 - [ ] Debug APK 构建通过；
 - [ ] 3 台真机均完成授权；
 - [ ] 3 台真机识别成功率均不低于 95%；
@@ -158,7 +157,7 @@ adb shell pm list packages | Select-String "aweme|douyin"
 
 ## 8. 当前环境结论
 
-当前 Windows 主机已安装 JDK 17、Flutter SDK 和 Android Command-line Tools。Android SDK 许可协议必须由账号/设备所有者亲自确认，因此 API 36、Build Tools 和 ADB 尚未完成安装。请在 PowerShell 执行：
+当前 Windows 主机已安装 JDK 17 和 Android Command-line Tools。Android SDK 许可协议必须由账号/设备所有者亲自确认，因此 API 36、Build Tools 和 ADB 尚未完成安装。请在 PowerShell 执行：
 
 ```powershell
 & "$env:LOCALAPPDATA\Android\Sdk\cmdline-tools\latest\bin\sdkmanager.bat" --licenses

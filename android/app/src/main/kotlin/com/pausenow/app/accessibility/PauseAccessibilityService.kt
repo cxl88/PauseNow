@@ -3,7 +3,7 @@ package com.pausenow.app.accessibility
 import android.accessibilityservice.AccessibilityService
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
-import com.pausenow.app.bridge.NativeEventStream
+import com.pausenow.app.events.ForegroundEventBus
 
 class PauseAccessibilityService : AccessibilityService() {
     private val debouncer = EventDebouncer()
@@ -35,7 +35,7 @@ class PauseAccessibilityService : AccessibilityService() {
             detectedAtMs = System.currentTimeMillis(),
         )
         eventStore.append(record)
-        NativeEventStream.publish(record)
+        ForegroundEventBus.publish(record)
 
         Log.i(
             TAG,

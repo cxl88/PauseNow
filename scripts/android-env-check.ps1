@@ -1,6 +1,6 @@
 param(
-    [string]$FlutterPath = "",
-    [string]$AdbPath = ""
+    [string]$AdbPath = "",
+    [string]$JavaPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -19,26 +19,16 @@ function Resolve-Tool {
     throw "$CommandName was not found. Expected PATH or $Fallback"
 }
 
-$flutter = Resolve-Tool $FlutterPath "flutter" "C:\dev\flutter\bin\flutter.bat"
+$java = Resolve-Tool $JavaPath "java" "$env:JAVA_HOME\bin\java.exe"
 $adb = Resolve-Tool $AdbPath "adb" "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
 
 Write-Host "== Java =="
-java -version
-
-Write-Host "`n== Flutter =="
-& $flutter --version
-
-Write-Host "`n== Flutter doctor =="
-& $flutter doctor -v
+& $java -version
 
 Write-Host "`n== ADB devices =="
 & $adb devices -l
 
-Write-Host "`n== Project checks =="
-& $flutter pub get
-& $flutter analyze
-& $flutter test
-
+Write-Host "`n== Kotlin unit tests =="
 Push-Location "android"
 try {
     & ".\gradlew.bat" testDebugUnitTest
@@ -47,4 +37,22 @@ try {
     Pop-Location
 }
 
-& $flutter build apk --debug
+Write-Host "`n== Android lint (debug) =="
+Push-Location "android"
+try {
+    & ".\gradlew.bat" lintDebug
+    if ($LASTEXITCODE -ne 0) { throw "Android lint failed." }
+} finally {
+    Pop-Location
+}
+
+Write-Host "`n== Debug APK build =="
+Push-Location "android"
+try {
+    & ".\gradlew.bat" assembleDebug
+    if ($LASTEXITCODE -ne 0) { throw "Debug APK build failed." }
+} finally {
+    Pop-Location
+}
+
+Write-Host "`n== Done. APK: android\app\build\outputs\apk\debug\app-debug.apk =="
