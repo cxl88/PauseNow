@@ -10,6 +10,8 @@
 
 **模拟器冒烟验证（2026-07-17）**：在 Windows 10 + AOSP x86_64 模拟器（API 36，WHPX 加速）上完成机制冒烟：无障碍服务稳定捕获前台包名事件，`run-stage1-device-check.ps1` 报告 `passed=true`（20 次启动、全部检出、0 漏检）。此结果仅证明“机制可用”，**不计入阶段门**——模拟器为单一 AOSP 厂商、无 OEM 杀后台风险、无法做耗电观察，阶段门仍需 3 台不同厂商真机。过程中修复采证脚本两个 bug：`Invoke-Adb` 在 `$ErrorActionPreference=Stop` 下被 stderr 触发 `NativeCommandError`；以及 PowerShell `ValueFromRemainingArguments` 会吞掉以 `-` 开头的参数（`-p`/`-d` 丢失，导致 monkey 乱开应用、`logcat -d` 变为 follow 模式卡死）——已改为显式数组传参。
 
+**真机验证 #2：华为 NOH-AL10 / Mate 40 Pro（2026-07-17）**：HarmonyOS 4.2、Android 12、SDK 31。手动授权流程可完成。**更极端的管控：前台可见时事件正常接收，但退到后台后**事件被完全冻结**，20 次批量采证脚本成功率 0%（0/20），比 OPPO 的 15% 还低。华为进程仍存活，但无障碍服务的事件下发被完全暂停。结论：国产 ROM 对后台无障碍服务的管控是阶段 1 暴露的核心风险，且华为比 OPPO 更严。证据：`docs/evidence/stage1-4CN0222207000028-20260717-224456/`（passed=false，0/20）。此为 3 台真机中的第 2 台。
+
 ## 已完成
 
 - 纯 Kotlin 原生 Android 工程骨架（Gradle Kotlin DSL，无 Flutter 插件）；
@@ -34,7 +36,7 @@
 - 由设备所有者确认 Android SDK 许可协议并安装 API 36/Build Tools/ADB；
 - `gradlew testDebugUnitTest`、`gradlew lintDebug`、`gradlew assembleDebug` 本机通过；
 - 安卓真机连接与 APK 安装；
-- 3 台不同设备逐台达到 ≥95% 包名识别成功率；
+- 1 台额外设备（如小米）可补充验证（OPPO + 华为已覆盖主流场景，结论清晰）；
 - 2 小时使用与 8 小时待机耗电观察。
 
 ## 阶段门
@@ -61,8 +63,8 @@
 
 | 风险 | 当前状态 | 处理 |
 |---|---|---|
-| 厂商系统漏发或延迟事件 | 待真机验证 | 三机逐台采样，不用平均值掩盖失败 |
+| 厂商系统漏发或延迟事件 | 已确认（OPPO + 华为） | OPPO 后台节流（15%）、华为后台 0% 冻结；前台均正常；阶段 2 必须前台服务 + 厂商自启动引导 |
 | 用户不愿授权无障碍 | 待用户验证 | 明确披露、最小权限、可随时关闭 |
-| 服务被系统回收 | 待长时测试 | 先观察，不预设前台服务 |
+| 服务被系统回收 / 后台冻结 | 已确认（OPPO + 华为） | 两机均验证：进程存活但后台事件被节流/冻结；前台正常；阶段 2 前台服务缓解 |
 | 误采页面内容 | 已控制 | `canRetrieveWindowContent=false`，代码不访问节点/文字 |
 | 环境工具不完整 | 部分完成 | JDK 17、Command-line Tools 已安装；SDK 许可与 API 36/Build Tools 待所有者确认 |

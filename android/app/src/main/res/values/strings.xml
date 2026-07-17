@@ -3,4 +3,6 @@
     <string name="app_name">停一下</string>
     <string name="accessibility_service_label">停一下前台应用检测</string>
     <string name="accessibility_service_description">仅识别第三方应用进入前台的包名事件，不读取页面文字或输入内容。</string>
+    <string name="foreground_notification_title">停一下保护中</string>
+    <string name="foreground_notification_text">正在监测前台应用</string>
 </resources>

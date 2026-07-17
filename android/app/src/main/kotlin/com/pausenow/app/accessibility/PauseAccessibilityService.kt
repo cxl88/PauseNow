@@ -1,9 +1,18 @@
 package com.pausenow.app.accessibility
 
 import android.accessibilityservice.AccessibilityService
+import android.app.Notification
+import android.app.PendingIntent
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
+import androidx.core.app.NotificationCompat
+import com.pausenow.app.MainActivity
+import com.pausenow.app.R
 import com.pausenow.app.events.ForegroundEventBus
+import com.pausenow.app.notifications.NotificationChannels
 
 class PauseAccessibilityService : AccessibilityService() {
     private val debouncer = EventDebouncer()
@@ -14,7 +23,10 @@ class PauseAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         exclusionPolicy = PackageExclusionPolicy(packageName)
         eventStore = ForegroundEventStore(applicationContext)
-        Log.i(TAG, "serviceConnected=true contentRetrieval=false")
+        // 阶段 1 真机验证发现：国产 ROM 会冻结后台无障碍服务的事件下发。
+        // 把自身提升为前台服务（常驻通知），让进程保持 FOREGROUND_SERVICE 优先级。
+        promoteToForeground()
+        Log.i(TAG, "serviceConnected=true contentRetrieval=false foreground=true")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -52,6 +64,40 @@ class PauseAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         Log.i(TAG, "serviceDestroyed=true")
         super.onDestroy()
+    }
+
+    private fun promoteToForeground() {
+        NotificationChannels.ensureChannels(applicationContext)
+        val notification = buildForegroundNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NotificationChannels.FOREGROUND_NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
+            )
+        } else {
+            startForeground(
+                NotificationChannels.FOREGROUND_NOTIFICATION_ID,
+                notification,
+            )
+        }
+    }
+
+    private fun buildForegroundNotification(): Notification {
+        val contentIntent = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE,
+        )
+        return NotificationCompat.Builder(this, NotificationChannels.FOREGROUND_SERVICE_CHANNEL_ID)
+            .setContentTitle(getString(R.string.foreground_notification_title))
+            .setContentText(getString(R.string.foreground_notification_text))
+            .setSmallIcon(R.drawable.ic_notification)
+            .setOngoing(true)
+            .setContentIntent(contentIntent)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
     }
 
     private companion object {
