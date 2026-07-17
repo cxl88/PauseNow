@@ -1,0 +1,95 @@
+name: PauseNow
+
+options:
+  bundleIdPrefix: com.pausenow
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: 5.9
+    IPHONEOS_DEPLOYMENT_TARGET: 17.0
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 1
+    CODE_SIGN_STYLE: Automatic
+
+targets:
+  PauseNow:
+    type: application
+    platform: iOS
+    sources:
+      - path: PauseNow/App
+      - path: PauseNow/Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pausenow.app
+        PRODUCT_NAME: PauseNow
+        INFOPLIST_FILE: Configuration/PauseNow-Info.plist
+        CODE_SIGN_ENTITLEMENTS: Configuration/PauseNow.entitlements
+        TARGETED_DEVICE_FAMILY: "1"
+    dependencies:
+      - target: PauseNowDeviceActivityMonitor
+        embed: true
+      - target: PauseNowShieldConfiguration
+        embed: true
+      - target: PauseNowShieldAction
+        embed: true
+
+  PauseNowDeviceActivityMonitor:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: PauseNow/DeviceActivityMonitorExtension
+      - path: PauseNow/Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pausenow.app.device-activity-monitor
+        PRODUCT_NAME: PauseNowDeviceActivityMonitor
+        INFOPLIST_FILE: Configuration/DeviceActivityMonitor-Info.plist
+        CODE_SIGN_ENTITLEMENTS: Configuration/DeviceActivityMonitor.entitlements
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+
+  PauseNowShieldConfiguration:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: PauseNow/ShieldConfigurationExtension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pausenow.app.shield-configuration
+        PRODUCT_NAME: PauseNowShieldConfiguration
+        INFOPLIST_FILE: Configuration/ShieldConfiguration-Info.plist
+        CODE_SIGN_ENTITLEMENTS: Configuration/ShieldConfiguration.entitlements
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+
+  PauseNowShieldAction:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: PauseNow/ShieldActionExtension
+      - path: PauseNow/Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.pausenow.app.shield-action
+        PRODUCT_NAME: PauseNowShieldAction
+        INFOPLIST_FILE: Configuration/ShieldAction-Info.plist
+        CODE_SIGN_ENTITLEMENTS: Configuration/ShieldAction.entitlements
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
+
+schemes:
+  PauseNow:
+    build:
+      targets:
+        PauseNow: all
+        PauseNowDeviceActivityMonitor: all
+        PauseNowShieldConfiguration: all
+        PauseNowShieldAction: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+

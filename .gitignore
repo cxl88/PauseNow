@@ -1,0 +1,26 @@
+.DS_Store
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+PauseNow.xcodeproj/
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+
+# Android
+android/.gradle/
+android/local.properties
+android/key.properties
+*.jks
+*.keystore
+
+# Local device evidence can include serials and build fingerprints.
+docs/evidence/
+
+# IDE
+.idea/
+*.iml
