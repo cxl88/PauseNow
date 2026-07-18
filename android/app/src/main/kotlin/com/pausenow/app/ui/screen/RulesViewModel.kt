@@ -42,6 +42,15 @@ class RulesViewModel(application: Application) : AndroidViewModel(application) {
         load()
     }
 
+    fun setEnabled(ruleId: String, enabled: Boolean) {
+        val snapshot = snapshotStore.read()
+        val updated = snapshot.rules.map { rule ->
+            if (rule.id == ruleId) rule.copy(enabled = enabled) else rule
+        }
+        snapshotStore.write(snapshot.copy(rules = updated, updatedAt = System.currentTimeMillis()))
+        load()
+    }
+
     fun newRuleId(): String = "rule_" + System.currentTimeMillis()
     fun defaultDurationMs(): Long = snapshotStore.read().settings.passDurationMs
     fun defaultExtensionSeconds(): Int = snapshotStore.read().settings.extensionSeconds

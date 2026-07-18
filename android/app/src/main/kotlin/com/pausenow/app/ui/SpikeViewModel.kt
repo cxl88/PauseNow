@@ -11,11 +11,15 @@ import androidx.lifecycle.viewModelScope
 import com.pausenow.app.accessibility.ForegroundEventStore
 import com.pausenow.app.accessibility.ForegroundPackageEventRecord
 import com.pausenow.app.events.ForegroundEventBus
+import com.pausenow.app.intervention.ExpiryController
 import com.pausenow.app.model.DeviceSnapshot
 import com.pausenow.app.model.PermissionSnapshot
+import com.pausenow.app.pass.ActivePass
 import com.pausenow.app.pass.PassManager
 import com.pausenow.app.pass.SharedPreferencesPassStore
 import com.pausenow.app.permissions.AndroidPermissionGateway
+import com.pausenow.app.report.InterventionEvent
+import com.pausenow.app.report.InterventionEventStore
 import com.pausenow.app.rule.ProtectionRule
 import com.pausenow.app.snapshot.SharedPreferencesSnapshotStore
 import com.pausenow.app.snapshot.SnapshotStore
@@ -34,6 +38,12 @@ import java.time.Instant
  */
 class SpikeViewModel(application: Application) : AndroidViewModel(application) {
 
+    data class TodaySummary(
+        val completedChoices: Int = 0,
+        val passes: Int = 0,
+        val ended: Int = 0,
+    )
+
     data class UiState(
         val loading: Boolean = true,
         val permissions: PermissionSnapshot = PermissionSnapshot.unavailable,
@@ -42,6 +52,8 @@ class SpikeViewModel(application: Application) : AndroidViewModel(application) {
         val disclosureAccepted: Boolean = false,
         val protectedPackage: String = "",
         val currentPassInfo: String? = null,
+        val activePass: ActivePass? = null,
+        val today: TodaySummary = TodaySummary(),
         val error: String? = null,
     )
 
@@ -49,6 +61,8 @@ class SpikeViewModel(application: Application) : AndroidViewModel(application) {
     private val eventStore = ForegroundEventStore(application)
     private val snapshotStore: SnapshotStore = SharedPreferencesSnapshotStore(application)
     private val passManager = PassManager(SharedPreferencesPassStore(application))
+    private val expiryController = ExpiryController(application)
+    private val interventionEventStore = InterventionEventStore(application)
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private val _state = MutableStateFlow(UiState())
@@ -90,6 +104,13 @@ class SpikeViewModel(application: Application) : AndroidViewModel(application) {
                 val now = System.currentTimeMillis()
                 val allPasses = snapshot.protectedPackages.mapNotNull { passManager.currentPass(it) }
                 val activePasses = allPasses.filter { !it.isExpired(now) }
+                val activePass = activePasses.minByOrNull { it.expiresAtMs }
+                val todayEvents = interventionEventStore.todayEvents()
+                val today = TodaySummary(
+                    completedChoices = todayEvents.count { it.type == "grant" || it.type == "extend" || it.type == "end" },
+                    passes = todayEvents.count { it.type == "grant" },
+                    ended = todayEvents.count { it.type == "end" },
+                )
                 val passInfo = when {
                     activePasses.isEmpty() && allPasses.isEmpty() -> null
                     activePasses.isEmpty() -> "通行已到期"
@@ -111,6 +132,8 @@ class SpikeViewModel(application: Application) : AndroidViewModel(application) {
                         events = events,
                         protectedPackage = protectedPkg,
                         currentPassInfo = passInfo,
+                        activePass = activePass,
+                        today = today,
                     )
                 }
             } catch (error: Exception) {
@@ -160,6 +183,24 @@ class SpikeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun clearProtection() = setProtectedPackage("")
+
+    fun endActivePass() {
+        val activePass = _state.value.activePass ?: return
+        // 先从 UI 状态移除，避免用户快速连点时重复记录结束事件。
+        _state.update { current ->
+            if (current.activePass?.packageName == activePass.packageName) {
+                current.copy(activePass = null, currentPassInfo = null)
+            } else {
+                current
+            }
+        }
+        passManager.endPass(activePass.packageName)
+        expiryController.cancelExpiry(activePass.packageName)
+        interventionEventStore.append(
+            InterventionEvent("end", activePass.packageName, System.currentTimeMillis()),
+        )
+        refresh()
+    }
 
     /**
      * 生成验收证据 JSON 并复制到剪贴板。返回 true 表示复制成功。
