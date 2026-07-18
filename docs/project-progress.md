@@ -20,6 +20,10 @@
 
 **阶段 3 收尾修复（2026-07-18）**：标记阶段 3 为"功能完成，待收尾验证"。修两项此前遗留缺口：(1) 显式权限降级——`PauseAccessibilityService.detectOnce` 接入 `AndroidPermissionGateway.hasUsageAccess()`，Usage Access 关闭时记 `degraded=usageAccessDenied` 日志并跳过干预（无障碍状态不自检：服务在运行即说明已开启，关闭时系统销毁服务、循环自然停止；国产 ROM 自检 enabled 列表存在误判回退风险，故只校验 Usage Access）；(2) 首页多规则展示——`HomeScreen` 增挂 `RulesViewModel`，`ProtectionStatusCard` 由"目标：单包名"改为"规则 N 条（启用 M 条）+ 目标包列表"，并在 `ON_RESUME` 重载规则；`SpikeViewModel.currentPassInfo` 改为多包感知（多通行时显示"通行中 K 个，最近到期 Ns"）。`SpikeViewModel.protectedPackage`/`currentPassInfo` 字段保留供 `SpikeScreen` 与证据 JSON 使用。`testDebugUnitTest` + `lintDebug` + `assembleDebug` + `assembleRelease` 全绿，`check-stage1-static.ps1` 8/8 通过。仍待：一台非 OPPO 设备的 Stage 3 闭环复测。
 
+**华为 Mate 40 Pro Stage 3 闭环复测成功（2026-07-18，NOH-AL10 / HarmonyOS 4.2 / EMUI 14.2 / Android 12）**：Stage 1 时华为后台无障碍事件 0% 冻结，本次验证 Stage 2/3 的 FGS+UsageStats 路线是否绕开。结果：(1) 前台检测循环每 3 秒命中抖音；(2) 闭环全链路 open->grant->expired->extend->end 五类事件全部记录验证；(3) **后台可靠性关键发现**--未开"启动管理"时退后台 20-30 秒进程被华为直接杀掉（连 FGS 常驻通知都保不住，`ConnectionRecord DEAD`）；开启"设置->电池->启动管理->停一下"手动放行（自启动+关联启动+后台活动）后，退后台进程持续存活，`ProcessStats BTopFgs` 每 10 秒跟踪，检测循环继续命中抖音，UsageStats 路线成功绕开华为后台冻结；(4) 权限显式降级验证--`appops set GET_USAGE_STATS ignore` 后日志出现 `degraded=usageAccessDenied` 并跳过干预，恢复后检测恢复。华为特有部署门槛：用户必须手动开启动管理，需在 Onboarding/文档引导。隐私不变量保持。详见 `docs/06_华为真机技术验证报告.md`。仍待：小米/vivo 复测、8 小时长时稳定性、P95 延迟埋点。
+
+**华为启动管理引导落地（2026-07-18）**：针对华为后台杀进程的特有门槛，在 `AndroidPermissionGateway` 加 `isHuawei()`（检测 `Build.MANUFACTURER/BRAND` 含 HUAWEI/HONOR）与 `openStartupManager()`（component 直跳 `com.huawei.systemmanager/.startupmgr.ui.StartupNormalAppListActivity`，ActivityNotFound/SecurityException 回退电池设置）。Onboarding 与 HomeScreen 在华为机型上显示"后台保活"提示卡片（errorContainer 配色），含操作路径文案与"打开启动管理"按钮。华为 Mate 40 Pro 真机验证：卡片正确显示，按钮点击成功跳转到 `StartupAppControlActivity`（华为启动管理页）。`testDebugUnitTest` + `lintDebug` + `assembleDebug`/`assembleRelease` 全绿，`check-stage1-static.ps1` 8/8 通过。
+
 ## 已完成
 
 - 纯 Kotlin 原生 Android 工程骨架（Gradle Kotlin DSL，无 Flutter 插件）；

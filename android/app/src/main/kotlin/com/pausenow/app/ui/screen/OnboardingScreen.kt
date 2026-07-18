@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -15,7 +16,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -23,6 +26,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.pausenow.app.permissions.AndroidPermissionGateway
 import com.pausenow.app.ui.SpikeViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -31,6 +35,8 @@ fun OnboardingScreen(onFinish: () -> Unit) {
     val viewModel: SpikeViewModel = viewModel()
     val state by viewModel.state.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
+    val context = LocalContext.current
+    val showHuaweiTip = remember { AndroidPermissionGateway(context).isHuawei() }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -87,6 +93,35 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("第 2 步：添加保护规则", style = MaterialTheme.typography.titleMedium)
                         Text("完成初始设置后，在首页点「保护规则」-> 新建 -> 从应用列表选择目标应用。")
+                    }
+                }
+            }
+            if (showHuaweiTip) {
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                        ),
+                    ) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("华为机型必看：后台保活", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "华为/鸿蒙默认会杀后台进程，停一下退后台约半分钟就会被系统回收，" +
+                                    "导致检测失效。必须手动放行：",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Text(
+                                "设置 -> 电池 -> 启动管理 -> 停一下 -> 关闭自动管理 ->" +
+                                    " 勾选「自启动 + 关联启动 + 后台活动」。",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Button(
+                                onClick = { runCatching { AndroidPermissionGateway(context).openStartupManager() } },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("打开启动管理")
+                            }
+                        }
                     }
                 }
             }
