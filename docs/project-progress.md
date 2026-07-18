@@ -24,6 +24,8 @@
 
 **华为启动管理引导落地（2026-07-18）**：针对华为后台杀进程的特有门槛，在 `AndroidPermissionGateway` 加 `isHuawei()`（检测 `Build.MANUFACTURER/BRAND` 含 HUAWEI/HONOR）与 `openStartupManager()`（component 直跳 `com.huawei.systemmanager/.startupmgr.ui.StartupNormalAppListActivity`，ActivityNotFound/SecurityException 回退电池设置）。Onboarding 与 HomeScreen 在华为机型上显示"后台保活"提示卡片（errorContainer 配色），含操作路径文案与"打开启动管理"按钮。华为 Mate 40 Pro 真机验证：卡片正确显示，按钮点击成功跳转到 `StartupAppControlActivity`（华为启动管理页）。`testDebugUnitTest` + `lintDebug` + `assembleDebug`/`assembleRelease` 全绿，`check-stage1-static.ps1` 8/8 通过。
 
+**华为复测暴露并修复 inFlight 互斥锁泄漏（2026-07-18）**：华为复测中"打开抖音不拦截、通行过期 5 分钟无反应"。排查：检测判定 `RequireExpiredIntervention` 正确，但 `launchSuppressed (cooldown or in-flight)`--`InterventionState.inFlight` 是无超时 set，依赖 `InterventionActivity.onDestroy` 的 `release`，华为上 onDestroy 延迟/不调用导致 inFlight 残留，同包干预被永久抑制。修复：(1) `InterventionState.inFlight` 改带时间戳 map，超 5 分钟（STALE_MS）自愈清除并记 `inFlightStaleCleared`；(2) `InterventionActivity` 的 onGrant/onExtend/onEnd 回调主动调 `release`，不等 onDestroy；(3) 新增 `InterventionStateTest` 5 用例覆盖互斥/冷却/泄漏自愈，`build.gradle` 加 `testOptions.unitTests.returnDefaultValues`。华为真机验证：修复后连续 `expired->extend` 多次（extensionCount 累计 4-5），每次 expired 均 `launched` 不再 suppressed。遗留：抖音 cold start splash 短暂盖干预页（几秒后浮上来，非阻断），留 Stage 4 UX 打磨。`testDebugUnitTest`+`lintDebug`+`assembleDebug` 全绿，静态检查 8/8。
+
 ## 已完成
 
 - 纯 Kotlin 原生 Android 工程骨架（Gradle Kotlin DSL，无 Flutter 插件）；

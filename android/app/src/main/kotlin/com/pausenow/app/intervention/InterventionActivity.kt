@@ -75,6 +75,7 @@ class InterventionActivity : ComponentActivity() {
                         expiryController.scheduleExpiry(targetPackage, pass.expiresAtMs)
                         record("grant", targetPackage)
                         returnToTarget(targetPackage)
+                        InterventionState.release(targetPackage)
                         finish()
                     },
                     onExtend = {
@@ -84,6 +85,7 @@ class InterventionActivity : ComponentActivity() {
                         }
                         record("extend", targetPackage)
                         returnToTarget(targetPackage)
+                        InterventionState.release(targetPackage)
                         finish()
                     },
                     onEnd = {
@@ -91,6 +93,7 @@ class InterventionActivity : ComponentActivity() {
                         expiryController.cancelExpiry(targetPackage)
                         record("end", targetPackage)
                         returnToDesktop()
+                        InterventionState.release(targetPackage)
                         finish()
                     },
                 )
