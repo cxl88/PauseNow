@@ -8,6 +8,7 @@
 - [Kotlin 原生 开发环境与技术验证设计](02_停一下_Kotlin原生_开发环境与技术验证设计.md)
 - [系统架构与项目推进方案](03_停一下_系统架构与项目推进方案.md)
 - [阶段 1：权限与前台事件 Spike 验证](04_阶段1_权限与前台事件_Spike验证.md)
+- [OPPO 真机技术验证报告](05_OPPO真机技术验证报告.md)
 - [项目进度](project-progress.md)
 
 当前技术路线为纯 Kotlin 原生（Kotlin + Jetpack Compose），单进程，无 Flutter、无跨进程桥接。
