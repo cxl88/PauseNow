@@ -25,3 +25,4 @@ docs/evidence/
 # IDE
 .idea/
 *.iml
+.rar
