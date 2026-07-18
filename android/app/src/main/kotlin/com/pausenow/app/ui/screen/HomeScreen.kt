@@ -135,10 +135,14 @@ private fun HuaweiBackgroundKeepaliveCard(context: android.content.Context) {
         ),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("华为机型：未开后台保活", style = MaterialTheme.typography.titleMedium)
+            Text("华为机型：未开后台保活与弹出", style = MaterialTheme.typography.titleMedium)
             Text(
-                "华为/鸿蒙默认杀后台，停一下退后台约半分钟会被回收，检测失效。" +
-                    "去 设置 -> 电池 -> 启动管理 -> 停一下 -> 关闭自动管理 ->" +
+                "华为/鸿蒙默认杀后台，且禁止后台弹出界面。不开会导致：停一下退后台约半分钟被回收、" +
+                    "打开抖音时干预页弹不到前台被抖音盖住。需开两项：",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                "① 设置 -> 电池 -> 启动管理 -> 停一下 -> 关闭自动管理 ->" +
                     " 勾选「自启动 + 关联启动 + 后台活动」。",
                 style = MaterialTheme.typography.bodyMedium,
             )
@@ -149,6 +153,18 @@ private fun HuaweiBackgroundKeepaliveCard(context: android.content.Context) {
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("打开启动管理")
+            }
+            Text(
+                "② 设置 -> 应用 -> 停一下 -> 权限 -> 后台弹出界面 -> 允许。",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Button(
+                onClick = {
+                    runCatching { AndroidPermissionGateway(context).openAppDetails() }
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("打开应用权限（开后台弹出界面）")
             }
         }
     }

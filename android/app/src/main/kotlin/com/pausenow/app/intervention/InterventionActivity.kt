@@ -101,6 +101,16 @@ class InterventionActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (::targetPackage.isInitialized) InterventionState.onShowing(targetPackage, true)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (::targetPackage.isInitialized) InterventionState.onShowing(targetPackage, false)
+    }
+
     override fun onDestroy() {
         if (::targetPackage.isInitialized) {
             InterventionState.release(targetPackage)

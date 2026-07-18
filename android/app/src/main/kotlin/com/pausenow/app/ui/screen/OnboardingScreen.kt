@@ -104,14 +104,14 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                         ),
                     ) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("华为机型必看：后台保活", style = MaterialTheme.typography.titleMedium)
+                            Text("华为机型必看：后台保活与弹出", style = MaterialTheme.typography.titleMedium)
                             Text(
                                 "华为/鸿蒙默认会杀后台进程，停一下退后台约半分钟就会被系统回收，" +
                                     "导致检测失效。必须手动放行：",
                                 style = MaterialTheme.typography.bodyMedium,
                             )
                             Text(
-                                "设置 -> 电池 -> 启动管理 -> 停一下 -> 关闭自动管理 ->" +
+                                "① 设置 -> 电池 -> 启动管理 -> 停一下 -> 关闭自动管理 ->" +
                                     " 勾选「自启动 + 关联启动 + 后台活动」。",
                                 style = MaterialTheme.typography.bodyMedium,
                             )
@@ -120,6 +120,18 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Text("打开启动管理")
+                            }
+                            Text(
+                                "② 设置 -> 应用 -> 停一下 -> 权限 -> 后台弹出界面 -> 允许。" +
+                                    "不开则打开抖音时干预页弹不到前台、被抖音盖住。",
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
+                            Button(
+                                onClick = { runCatching { AndroidPermissionGateway(context).openAppDetails() } },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text("打开应用权限（开后台弹出界面）")
                             }
                         }
                     }

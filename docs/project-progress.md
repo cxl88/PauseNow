@@ -26,6 +26,8 @@
 
 **华为复测暴露并修复 inFlight 互斥锁泄漏（2026-07-18）**：华为复测中"打开抖音不拦截、通行过期 5 分钟无反应"。排查：检测判定 `RequireExpiredIntervention` 正确，但 `launchSuppressed (cooldown or in-flight)`--`InterventionState.inFlight` 是无超时 set，依赖 `InterventionActivity.onDestroy` 的 `release`，华为上 onDestroy 延迟/不调用导致 inFlight 残留，同包干预被永久抑制。修复：(1) `InterventionState.inFlight` 改带时间戳 map，超 5 分钟（STALE_MS）自愈清除并记 `inFlightStaleCleared`；(2) `InterventionActivity` 的 onGrant/onExtend/onEnd 回调主动调 `release`，不等 onDestroy；(3) 新增 `InterventionStateTest` 5 用例覆盖互斥/冷却/泄漏自愈，`build.gradle` 加 `testOptions.unitTests.returnDefaultValues`。华为真机验证：修复后连续 `expired->extend` 多次（extensionCount 累计 4-5），每次 expired 均 `launched` 不再 suppressed。遗留：抖音 cold start splash 短暂盖干预页（几秒后浮上来，非阻断），留 Stage 4 UX 打磨。`testDebugUnitTest`+`lintDebug`+`assembleDebug` 全绿，静态检查 8/8。
 
+**干预页被盖修复：后台弹出界面权限引导 + 被盖重盖机制（2026-07-18）**：用户反馈"打开抖音无感知，要切到停一下才看到干预页"。根因：华为"后台弹出界面"权限默认禁止后台 app 弹界面盖前台 app，干预页被抖音盖住；Android 后台 Activity 启动限制 + 抖音 main 启动时序竞争也会盖回干预页。修复：(1) `AndroidPermissionGateway` 加 `openAppDetails()`，Onboarding 与 Home 华为卡片增"后台弹出界面"权限引导（① 启动管理三项 + ② 后台弹出界面，两个跳转按钮）；(2) 被盖重盖机制--`InterventionState` 加 `showing` 状态（InterventionActivity onResume/onPause 标记）与 `LaunchResult` 枚举（STARTED/RECOVER/SUPPRESSED），被盖时（inFlight 且 showing=false）检测循环 `tryStart` 返回 RECOVER 重新 startActivity 盖回，首次才 record 事件、重盖不 record；(3) `InterventionStateTest` 更新覆盖 RECOVER。华为 Mate 40 Pro 真机验证：开权限 + 重盖后，打开抖音干预页稳定盖在前台（焦点 InterventionActivity，文案"即将打开抖音，是否放行 5 分钟"，10 秒未被盖回），用户可见可操作。`testDebugUnitTest`+`lintDebug`+`assembleDebug/Release` 全绿，静态检查 8/8。
+
 ## 已完成
 
 - 纯 Kotlin 原生 Android 工程骨架（Gradle Kotlin DSL，无 Flutter 插件）；

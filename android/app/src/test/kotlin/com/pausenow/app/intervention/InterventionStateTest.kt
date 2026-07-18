@@ -1,12 +1,14 @@
 package com.pausenow.app.intervention
 
+import com.pausenow.app.intervention.InterventionState.LaunchResult
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
 /**
- * 覆盖 [InterventionState] 的互斥、冷却与泄漏自愈（华为真机暴露的 inFlight 残留 bug）。
+ * 覆盖 [InterventionState] 的互斥、冷却、被盖重盖与泄漏自愈。
  */
 class InterventionStateTest {
 
@@ -21,33 +23,43 @@ class InterventionStateTest {
     }
 
     @Test
-    fun `first tryStart succeeds`() {
-        assertTrue(InterventionState.tryStart(pkg, cooldown, now = base))
+    fun `first tryStart returns STARTED`() {
+        assertEquals(LaunchResult.STARTED, InterventionState.tryStart(pkg, cooldown, now = base))
     }
 
     @Test
-    fun `inFlight blocks second tryStart`() {
-        assertTrue(InterventionState.tryStart(pkg, cooldown, now = base))
-        assertFalse(InterventionState.tryStart(pkg, cooldown, now = base + 1_000))
+    fun `inFlight showing blocks second tryStart`() {
+        InterventionState.tryStart(pkg, cooldown, now = base)
+        InterventionState.onShowing(pkg, true) // 干预页到前台
+        assertEquals(LaunchResult.SUPPRESSED, InterventionState.tryStart(pkg, cooldown, now = base + 1_000))
+    }
+
+    @Test
+    fun `inFlight but hidden returns RECOVER for re-cover`() {
+        // 干预页被目标应用盖到后台（showing=false），允许重盖
+        InterventionState.tryStart(pkg, cooldown, now = base)
+        InterventionState.onShowing(pkg, true)
+        InterventionState.onShowing(pkg, false) // 被盖
+        assertEquals(LaunchResult.RECOVER, InterventionState.tryStart(pkg, cooldown, now = base + 1_000))
     }
 
     @Test
     fun `release allows tryStart again after cooldown`() {
-        assertTrue(InterventionState.tryStart(pkg, cooldown, now = base))
+        assertEquals(LaunchResult.STARTED, InterventionState.tryStart(pkg, cooldown, now = base))
         InterventionState.release(pkg)
         // release 只清 inFlight，cooldown（lastLaunch）仍生效
-        assertFalse(InterventionState.tryStart(pkg, cooldown, now = base + cooldown - 1))
-        assertTrue(InterventionState.tryStart(pkg, cooldown, now = base + cooldown))
+        assertEquals(LaunchResult.SUPPRESSED, InterventionState.tryStart(pkg, cooldown, now = base + cooldown - 1))
+        assertEquals(LaunchResult.STARTED, InterventionState.tryStart(pkg, cooldown, now = base + cooldown))
     }
 
     @Test
     fun `stale inFlight self heals after timeout`() {
         // 模拟 Activity 泄漏：tryStart 成功但 release 从未调用（华为上 onDestroy 缺失）
-        assertTrue(InterventionState.tryStart(pkg, cooldown, now = base))
-        // 未超时：仍被互斥抑制
-        assertFalse(InterventionState.tryStart(pkg, cooldown, now = base + stale - 1))
-        // 超过 STALE_MS：自愈，允许重新启动
-        assertTrue(InterventionState.tryStart(pkg, cooldown, now = base + stale))
+        assertEquals(LaunchResult.STARTED, InterventionState.tryStart(pkg, cooldown, now = base))
+        // 未超时：被盖重盖
+        assertEquals(LaunchResult.RECOVER, InterventionState.tryStart(pkg, cooldown, now = base + stale - 1))
+        // 超过 STALE_MS：自愈，重新 STARTED
+        assertEquals(LaunchResult.STARTED, InterventionState.tryStart(pkg, cooldown, now = base + stale))
     }
 
     @Test

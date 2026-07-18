@@ -5,6 +5,7 @@ import android.app.AppOpsManager
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Process
 import android.provider.Settings
@@ -54,6 +55,20 @@ class AndroidPermissionGateway(private val context: Context) {
         runCatching {
             context.startActivity(
                 Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
+    }
+
+    /**
+     * 打开停一下的应用详情页，由用户进入"权限"开启"后台弹出界面"
+     * （华为默认禁止后台弹界面，不开则干预页弹不到前台、被目标应用盖住）。
+     */
+    fun openAppDetails() {
+        runCatching {
+            context.startActivity(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    .setData(Uri.parse("package:${context.packageName}"))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             )
         }
