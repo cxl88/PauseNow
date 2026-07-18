@@ -13,7 +13,12 @@ import com.pausenow.app.accessibility.ForegroundPackageEventRecord
 import com.pausenow.app.events.ForegroundEventBus
 import com.pausenow.app.model.DeviceSnapshot
 import com.pausenow.app.model.PermissionSnapshot
+import com.pausenow.app.pass.PassManager
+import com.pausenow.app.pass.SharedPreferencesPassStore
 import com.pausenow.app.permissions.AndroidPermissionGateway
+import com.pausenow.app.rule.ProtectionRule
+import com.pausenow.app.snapshot.SharedPreferencesSnapshotStore
+import com.pausenow.app.snapshot.SnapshotStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,7 +29,7 @@ import org.json.JSONObject
 import java.time.Instant
 
 /**
- * 阶段 1 Spike 页面的状态持有者。直接调用 Kotlin 原生网关与本地存储，
+ * 阶段 1+2 Spike 页面的状态持有者。直接调用 Kotlin 原生网关与本地存储，
  * 替代原 Flutter 时代的 MethodChannel/EventChannel 桥接。
  */
 class SpikeViewModel(application: Application) : AndroidViewModel(application) {
@@ -35,11 +40,15 @@ class SpikeViewModel(application: Application) : AndroidViewModel(application) {
         val device: DeviceSnapshot = DeviceSnapshot.unavailable,
         val events: List<ForegroundPackageEventRecord> = emptyList(),
         val disclosureAccepted: Boolean = false,
+        val protectedPackage: String = "",
+        val currentPassInfo: String? = null,
         val error: String? = null,
     )
 
     private val gateway = AndroidPermissionGateway(application)
     private val eventStore = ForegroundEventStore(application)
+    private val snapshotStore: SnapshotStore = SharedPreferencesSnapshotStore(application)
+    private val passManager = PassManager(SharedPreferencesPassStore(application))
     private val mainHandler = Handler(Looper.getMainLooper())
 
     private val _state = MutableStateFlow(UiState())
@@ -76,12 +85,32 @@ class SpikeViewModel(application: Application) : AndroidViewModel(application) {
                 val permissionMap = gateway.permissionSnapshot()
                 val device = DeviceSnapshot.from(getApplication())
                 val events = eventStore.recentEvents()
+                val snapshot = snapshotStore.read()
+                val protectedPkg = snapshot.protectedPackages.firstOrNull().orEmpty()
+                val now = System.currentTimeMillis()
+                val allPasses = snapshot.protectedPackages.mapNotNull { passManager.currentPass(it) }
+                val activePasses = allPasses.filter { !it.isExpired(now) }
+                val passInfo = when {
+                    activePasses.isEmpty() && allPasses.isEmpty() -> null
+                    activePasses.isEmpty() -> "通行已到期"
+                    activePasses.size == 1 -> {
+                        val remaining = ((activePasses[0].expiresAtMs - now) / 1000).coerceAtLeast(0)
+                        "通行中：剩余 ${remaining}s"
+                    }
+                    else -> {
+                        val nearest = activePasses.minBy { it.expiresAtMs }
+                        val remaining = ((nearest.expiresAtMs - now) / 1000).coerceAtLeast(0)
+                        "通行中 ${activePasses.size} 个，最近到期 ${remaining}s"
+                    }
+                }
                 _state.update {
                     it.copy(
                         loading = false,
                         permissions = PermissionSnapshot.from(permissionMap),
                         device = device,
                         events = events,
+                        protectedPackage = protectedPkg,
+                        currentPassInfo = passInfo,
                     )
                 }
             } catch (error: Exception) {
@@ -109,6 +138,29 @@ class SpikeViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(events = emptyList()) }
     }
 
+    /** 阶段 2 临时：手动设置保护包名（写成单条规则）。阶段 3 规则编辑 UI 会替代。 */
+    fun setProtectedPackage(pkg: String) {
+        val current = snapshotStore.read()
+        val trimmed = pkg.trim()
+        val rules = if (trimmed.isEmpty()) {
+            emptyList()
+        } else {
+            listOf(
+                ProtectionRule(
+                    id = "default",
+                    name = trimmed,
+                    targetPackages = setOf(trimmed),
+                    passDurationMs = current.settings.passDurationMs,
+                    extensionSeconds = current.settings.extensionSeconds,
+                ),
+            )
+        }
+        snapshotStore.write(current.copy(rules = rules, updatedAt = System.currentTimeMillis()))
+        refresh()
+    }
+
+    fun clearProtection() = setProtectedPackage("")
+
     /**
      * 生成验收证据 JSON 并复制到剪贴板。返回 true 表示复制成功。
      */
@@ -120,6 +172,7 @@ class SpikeViewModel(application: Application) : AndroidViewModel(application) {
             .put("generatedAt", Instant.now().toString())
             .put("device", current.device.toJson())
             .put("permissions", current.permissions.toJson())
+            .put("protectedPackage", current.protectedPackage)
             .put("eventCount", current.events.size)
             .put("events", eventsArray)
             .toString(2)

@@ -7,10 +7,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -31,6 +33,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -39,8 +43,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -120,6 +126,14 @@ fun SpikeScreen() {
                         accepted = state.disclosureAccepted,
                         onAcceptedChanged = viewModel::acceptDisclosure,
                         onOpenSettings = viewModel::openAccessibilitySettings,
+                    )
+                }
+                item {
+                    ProtectionCard(
+                        protectedPackage = state.protectedPackage,
+                        currentPassInfo = state.currentPassInfo,
+                        onApply = viewModel::setProtectedPackage,
+                        onClear = viewModel::clearProtection,
                     )
                 }
                 if (state.loading) {
@@ -358,15 +372,47 @@ private fun StatusChip(granted: Boolean) {
 }
 
 @Composable
-private fun PauseNowTheme(content: @Composable () -> Unit) {
-    val scheme = androidx.compose.material3.lightColorScheme(
-        primary = Color(0xFF2E6B62),
-        onPrimary = Color.White,
-        primaryContainer = Color(0xFF9CF1E2),
-        onPrimaryContainer = Color(0xFF00201B),
-        secondary = Color(0xFF4A6363),
-        surface = Color(0xFFFBFDFA),
-        background = Color(0xFFFBFDFA),
-    )
-    MaterialTheme(colorScheme = scheme, content = content)
+private fun ProtectionCard(
+    protectedPackage: String,
+    currentPassInfo: String?,
+    onApply: (String) -> Unit,
+    onClear: () -> Unit,
+) {
+    var text by remember(protectedPackage) { mutableStateOf(protectedPackage) }
+    Card {
+        Column(Modifier.padding(16.dp)) {
+            Text("阶段 2 保护配置", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "设置目标应用包名，服务将在其进入前台时弹出干预。",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                label = { Text("目标包名") },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+            )
+            Row(
+                modifier = Modifier.padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(onClick = { onApply(text) }) { Text("应用保护") }
+                OutlinedButton(onClick = onClear) { Text("清除") }
+            }
+            if (protectedPackage.isNotEmpty()) {
+                Text(
+                    "当前保护：$protectedPackage",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+                currentPassInfo?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+    }
 }

@@ -28,7 +28,7 @@ class AndroidPermissionGateway(private val context: Context) {
     }
 
     @Suppress("DEPRECATION")
-    private fun hasUsageAccess(): Boolean {
+    fun hasUsageAccess(): Boolean {
         val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
         val mode = appOps.checkOpNoThrow(
             AppOpsManager.OPSTR_GET_USAGE_STATS,
