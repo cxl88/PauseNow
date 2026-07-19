@@ -22,6 +22,11 @@ class RulesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun getRule(ruleId: String): ProtectionRule? = _rules.value.find { it.id == ruleId }
 
+    fun findRuleForPackage(packageName: String, excludingRuleId: String? = null): ProtectionRule? =
+        _rules.value.firstOrNull { rule ->
+            rule.id != excludingRuleId && packageName in rule.targetPackages
+        }
+
     fun saveRule(rule: ProtectionRule) {
         val snapshot = snapshotStore.read()
         val rules = snapshot.rules.toMutableList()

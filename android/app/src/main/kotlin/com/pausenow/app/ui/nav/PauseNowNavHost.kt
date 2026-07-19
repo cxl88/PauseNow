@@ -1,13 +1,8 @@
 package com.pausenow.app.ui.nav
 
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavType
@@ -47,11 +42,18 @@ fun PauseNowNavHost() {
         if (OnboardingStore(context).isCompleted()) Routes.HOME else Routes.ONBOARDING
     }
     PauseNowTheme {
+        fun navigateMain(route: String) {
+            navController.navigate(route) {
+                launchSingleTop = true
+                restoreState = true
+                popUpTo(Routes.HOME) { saveState = true }
+            }
+        }
         NavHost(navController = navController, startDestination = startDestination) {
             composable(Routes.HOME) {
                 HomeScreen(
-                    onRules = { navController.navigate(Routes.RULES) },
-                    onReport = { navController.navigate(Routes.REPORT) },
+                    onRules = { navigateMain(Routes.RULES) },
+                    onReport = { navigateMain(Routes.REPORT) },
                     onSettings = { navController.navigate(Routes.SETTINGS) },
                 )
             }
@@ -67,6 +69,8 @@ fun PauseNowNavHost() {
                 RulesScreen(
                     onAdd = { navController.navigate(Routes.ruleEdit("new")) },
                     onEdit = { id -> navController.navigate(Routes.ruleEdit(id)) },
+                    onHome = { navigateMain(Routes.HOME) },
+                    onReport = { navigateMain(Routes.REPORT) },
                 )
             }
             composable(
@@ -86,20 +90,25 @@ fun PauseNowNavHost() {
                 )
             }
             composable(Routes.APP_PICKER) {
-                AppPickerScreen(onPicked = { pkg ->
-                    navController.previousBackStackEntry?.savedStateHandle?.set(Routes.KEY_SELECTED_PACKAGE, pkg)
-                    navController.popBackStack()
-                })
+                AppPickerScreen(
+                    onPicked = { pkg ->
+                        navController.previousBackStackEntry?.savedStateHandle?.set(Routes.KEY_SELECTED_PACKAGE, pkg)
+                        navController.popBackStack()
+                    },
+                    onEditProtected = { ruleId ->
+                        navController.popBackStack(Routes.RULES, inclusive = false)
+                        navController.navigate(Routes.ruleEdit(ruleId))
+                    },
+                    onBack = { navController.popBackStack() },
+                )
             }
-            composable(Routes.REPORT) { ReportScreen() }
+            composable(Routes.REPORT) {
+                ReportScreen(
+                    onHome = { navigateMain(Routes.HOME) },
+                    onRules = { navigateMain(Routes.RULES) },
+                )
+            }
             composable(Routes.SETTINGS) { SettingsScreen() }
         }
-    }
-}
-
-@Composable
-private fun Placeholder(title: String) {
-    Scaffold { padding ->
-        Text(title, modifier = Modifier.fillMaxSize().padding(padding))
     }
 }
