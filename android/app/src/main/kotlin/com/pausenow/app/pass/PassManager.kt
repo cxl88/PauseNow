@@ -2,13 +2,15 @@ package com.pausenow.app.pass
 
 /**
  * 通行管理器（docs/09 §9 ActivePassRepository 领域逻辑）。v3：grant 命令、extendOnce 三层约束（R-006）、end(reason)、cancelForRule。
- * clock 可注入便于单测。
+ * 所有写操作 synchronized 保证原子（R-006 并发不可绕过）。clock 可注入便于单测。
  */
 class PassManager(
     private val store: PassStore,
     private val clock: () -> Long = { System.currentTimeMillis() },
 ) {
-    fun grant(command: GrantPassCommand): ActivePass {
+    private val lock = Any()
+
+    fun grant(command: GrantPassCommand): ActivePass = synchronized(lock) {
         val now = clock()
         val pass = ActivePass(
             sessionId = command.sessionId,
@@ -23,13 +25,13 @@ class PassManager(
             status = PassStatus.ACTIVE,
         )
         store.upsert(pass)
-        return pass
+        pass
     }
 
     fun currentPass(packageName: String): ActivePass? = store.getByPackage(packageName)
 
-    /** R-006 Domain 层：extensionCount>=1 返回 AlreadyExtended。 */
-    fun extendOnce(sessionId: String): ExtendResult {
+    /** R-006 Domain 层：extensionCount>=1 返回 AlreadyExtended。synchronized 保证并发只一次成功。 */
+    fun extendOnce(sessionId: String): ExtendResult = synchronized(lock) {
         val pass = store.load()[sessionId] ?: return ExtendResult.NotFound
         if (!pass.canExtend()) return ExtendResult.AlreadyExtended
         val now = clock()
@@ -39,14 +41,14 @@ class PassManager(
             extensionCount = pass.extensionCount + 1,
         )
         store.upsert(extended)
-        return ExtendResult.Extended(extended)
+        ExtendResult.Extended(extended)
     }
 
-    fun end(sessionId: String, @Suppress("UNUSED_PARAMETER") reason: PassEndReason) {
+    fun end(sessionId: String, @Suppress("UNUSED_PARAMETER") reason: PassEndReason) = synchronized(lock) {
         store.remove(sessionId)
     }
 
-    fun cancelForRule(ruleId: String, @Suppress("UNUSED_PARAMETER") reason: PassEndReason) {
+    fun cancelForRule(ruleId: String, @Suppress("UNUSED_PARAMETER") reason: PassEndReason) = synchronized(lock) {
         store.load().values.filter { it.ruleId == ruleId }.forEach { store.remove(it.sessionId) }
     }
 

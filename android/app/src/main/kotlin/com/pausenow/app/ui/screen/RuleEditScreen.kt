@@ -192,7 +192,7 @@ fun RuleEditScreen(
                         error = "该应用已经在保护中，请返回规则列表直接编辑。"
                         return@Button
                     }
-                    viewModel.saveRule(
+                    val result = viewModel.saveRule(
                         ProtectionRule(
                             id = existing?.id ?: viewModel.newRuleId(),
                             targetPackageName = pkg,
@@ -201,7 +201,14 @@ fun RuleEditScreen(
                             enabled = if (existing == null) true else enabled,
                         ),
                     )
-                    onBack()
+                    when (result) {
+                        is com.pausenow.app.rule.SaveRuleResult.Created,
+                        is com.pausenow.app.rule.SaveRuleResult.Updated -> { error = null; onBack() }
+                        is com.pausenow.app.rule.SaveRuleResult.DuplicatePackage ->
+                            error = "该应用已经在保护中，请返回规则列表直接编辑。"
+                        is com.pausenow.app.rule.SaveRuleResult.ValidationFailed ->
+                            error = result.reason
+                    }
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) {

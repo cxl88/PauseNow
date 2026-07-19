@@ -8,16 +8,22 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -32,8 +38,9 @@ import com.pausenow.app.report.InterventionEventStore
 import com.pausenow.app.report.ProductEventType
 
 /**
- * 干预页（docs/09 §4 状态机）。OPEN：打开前选择放行；EXPIRED：到期延长或结束。
- * v3：grant 带 purpose（阶段 1 占位 UNSPECIFIED_LEGACY，阶段 2 补 UI 选择）、extendOnce 三层约束（R-006）、end(reason)。
+ * 干预页（docs/09 §4 状态机）。
+ * - OPEN：选择使用目的（R-004）后放行，或"先不打开"（EXIT_BEFORE_OPEN）。
+ * - EXPIRED：未用过延长则可延长一次（R-006），否则只能结束。
  */
 class InterventionActivity : ComponentActivity() {
 
@@ -76,6 +83,8 @@ class InterventionActivity : ComponentActivity() {
         val ruleId = intent?.getStringExtra(EXTRA_RULE_ID) ?: "default"
         val passDurationSeconds = intent?.getIntExtra(EXTRA_PASS_DURATION, 300) ?: 300
         val extensionDurationSeconds = intent?.getIntExtra(EXTRA_EXTENSION, 180) ?: 180
+        val currentPass = passManager.currentPass(targetPackage)
+        val canExtend = currentPass?.canExtend() == true // R-006 UI：extensionCount<1 才显示延长
 
         setContent {
             MaterialTheme {
@@ -84,14 +93,15 @@ class InterventionActivity : ComponentActivity() {
                     packageName = targetPackage,
                     passDurationSeconds = passDurationSeconds,
                     extensionMinutes = extensionDurationSeconds / 60,
-                    onGrant = {
+                    canExtend = canExtend,
+                    onGrant = { purpose ->
                         val sessionId = "sess_${System.currentTimeMillis()}_${targetPackage.hashCode()}"
                         val pass = passManager.grant(
                             GrantPassCommand(
                                 sessionId = sessionId,
                                 ruleId = ruleId,
                                 packageName = targetPackage,
-                                purpose = PassPurpose.UNSPECIFIED_LEGACY, // 阶段 1 占位，阶段 2 补 UI 选择
+                                purpose = purpose,
                                 plannedDurationSeconds = passDurationSeconds,
                                 extensionDurationSeconds = extensionDurationSeconds,
                             ),
@@ -103,14 +113,14 @@ class InterventionActivity : ComponentActivity() {
                             sessionId,
                             ruleId,
                             passDurationSeconds,
-                            PassPurpose.UNSPECIFIED_LEGACY,
+                            purpose,
                         )
                         returnToTarget(targetPackage)
                         InterventionState.release(targetPackage)
                         finish()
                     },
                     onExtend = {
-                        val pass = passManager.currentPass(targetPackage)
+                        val pass = currentPass
                         if (pass != null) {
                             when (val r = passManager.extendOnce(pass.sessionId)) {
                                 is ExtendResult.Extended -> {
@@ -131,10 +141,15 @@ class InterventionActivity : ComponentActivity() {
                         finish()
                     },
                     onEnd = {
-                        val pass = passManager.currentPass(targetPackage)
-                        pass?.let { passManager.end(it.sessionId, PassEndReason.USER_ENDED) }
+                        currentPass?.let { passManager.end(it.sessionId, PassEndReason.USER_ENDED) }
                         expiryController.cancelExpiry(targetPackage)
-                        record(ProductEventType.END_AT_EXPIRY, targetPackage, pass?.sessionId, pass?.ruleId)
+                        record(ProductEventType.END_AT_EXPIRY, targetPackage, currentPass?.sessionId, ruleId)
+                        returnToDesktop()
+                        InterventionState.release(targetPackage)
+                        finish()
+                    },
+                    onExitBeforeOpen = {
+                        record(ProductEventType.EXIT_BEFORE_OPEN, targetPackage, ruleId = ruleId)
                         returnToDesktop()
                         InterventionState.release(targetPackage)
                         finish()
@@ -205,6 +220,14 @@ class InterventionActivity : ComponentActivity() {
     }
 }
 
+/** UI 可选的使用目的（排除 UNSPECIFIED_LEGACY，它仅供迁移）。 */
+private val purposeOptions = listOf(
+    PassPurpose.FIND_SPECIFIC_CONTENT,
+    PassPurpose.HANDLE_ONE_TASK,
+    PassPurpose.RELAX_BRIEFLY,
+    PassPurpose.NO_CLEAR_PURPOSE,
+)
+
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 private fun InterventionScreen(
@@ -212,18 +235,17 @@ private fun InterventionScreen(
     packageName: String,
     passDurationSeconds: Int,
     extensionMinutes: Int,
-    onGrant: () -> Unit,
+    canExtend: Boolean,
+    onGrant: (PassPurpose) -> Unit,
     onExtend: () -> Unit,
     onEnd: () -> Unit,
+    onExitBeforeOpen: () -> Unit,
 ) {
     val isExpired = mode == InterventionActivity.MODE_EXPIRED
     val title = if (isExpired) "时间到" else "停一下"
     val passDurationText = if (passDurationSeconds >= 60) "${passDurationSeconds / 60} 分钟" else "$passDurationSeconds 秒"
-    val message = if (isExpired) {
-        "$packageName 的限时通行已结束。"
-    } else {
-        "即将打开 $packageName，是否放行 $passDurationText？"
-    }
+    var selectedPurpose by remember { mutableStateOf(PassPurpose.NO_CLEAR_PURPOSE) }
+
     Scaffold(
         topBar = { TopAppBar(title = { Text("停一下 · 干预") }) },
     ) { padding ->
@@ -235,18 +257,42 @@ private fun InterventionScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text(message, style = MaterialTheme.typography.bodyLarge)
             if (isExpired) {
-                Button(onClick = onExtend, modifier = Modifier.fillMaxWidth()) {
-                    Text("延长 $extensionMinutes 分钟")
+                Text("$packageName 的限时通行已结束。", style = MaterialTheme.typography.bodyLarge)
+                if (canExtend) {
+                    Button(onClick = onExtend, modifier = Modifier.fillMaxWidth()) {
+                        Text("延长 $extensionMinutes 分钟")
+                    }
+                } else {
+                    Text(
+                        "本次延长已使用，无法再次延长。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                OutlinedButton(onClick = onEnd, modifier = Modifier.fillMaxWidth()) {
+                    Text("结束并回桌面")
                 }
             } else {
-                Button(onClick = onGrant, modifier = Modifier.fillMaxWidth()) {
+                Text("即将打开 $packageName，是否放行 $passDurationText？", style = MaterialTheme.typography.bodyLarge)
+                Text("你打开它想做什么？", style = MaterialTheme.typography.titleMedium)
+                purposeOptions.forEach { p ->
+                    FilterChip(
+                        selected = selectedPurpose == p,
+                        onClick = { selectedPurpose = p },
+                        label = { Text(p.label) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                Button(
+                    onClick = { onGrant(selectedPurpose) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
                     Text("放行 $passDurationText")
                 }
-            }
-            OutlinedButton(onClick = onEnd, modifier = Modifier.fillMaxWidth()) {
-                Text("结束并回桌面")
+                OutlinedButton(onClick = onExitBeforeOpen, modifier = Modifier.fillMaxWidth()) {
+                    Text("先不打开")
+                }
             }
         }
     }

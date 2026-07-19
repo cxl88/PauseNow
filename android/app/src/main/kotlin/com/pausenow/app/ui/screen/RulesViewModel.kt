@@ -3,6 +3,8 @@ package com.pausenow.app.ui.screen
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import com.pausenow.app.rule.ProtectionRule
+import com.pausenow.app.rule.RuleValidator
+import com.pausenow.app.rule.SaveRuleResult
 import com.pausenow.app.snapshot.SharedPreferencesSnapshotStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,13 +29,36 @@ class RulesViewModel(application: Application) : AndroidViewModel(application) {
             rule.id != excludingRuleId && rule.targetPackageName == packageName
         }
 
-    fun saveRule(rule: ProtectionRule) {
+    fun saveRule(rule: ProtectionRule): SaveRuleResult = saveRuleWithResult(rule)
+
+    /** R-001 唯一性 Domain + R-003 白名单 Domain 校验（docs/09 §9）。 */
+    fun saveRuleWithResult(rule: ProtectionRule): SaveRuleResult {
         val snapshot = snapshotStore.read()
+        when (val v = RuleValidator.validate(rule, snapshot.rules)) {
+            is com.pausenow.app.rule.RuleValidation.ValidationFailed ->
+                return SaveRuleResult.ValidationFailed(v.reason)
+            com.pausenow.app.rule.RuleValidation.DuplicatePackage ->
+                return SaveRuleResult.DuplicatePackage
+            com.pausenow.app.rule.RuleValidation.Valid -> Unit
+        }
+        val now = System.currentTimeMillis()
+        val withTimestamp = if (rule.createdAtMs == 0L) {
+            rule.copy(createdAtMs = now, updatedAtMs = now)
+        } else {
+            rule.copy(updatedAtMs = now)
+        }
         val rules = snapshot.rules.toMutableList()
-        val idx = rules.indexOfFirst { it.id == rule.id }
-        if (idx >= 0) rules[idx] = rule else rules.add(rule)
-        snapshotStore.write(snapshot.copy(rules = rules, updatedAt = System.currentTimeMillis()))
+        val idx = rules.indexOfFirst { it.id == withTimestamp.id }
+        val result = if (idx >= 0) {
+            rules[idx] = withTimestamp
+            SaveRuleResult.Updated(withTimestamp)
+        } else {
+            rules.add(withTimestamp)
+            SaveRuleResult.Created(withTimestamp)
+        }
+        snapshotStore.write(snapshot.copy(rules = rules, updatedAt = now))
         load()
+        return result
     }
 
     fun deleteRule(ruleId: String) {

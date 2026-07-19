@@ -133,4 +133,25 @@ class PassManagerTest {
         assertEquals(1, reloaded.extensionCount)
         assertEquals(ExtendResult.AlreadyExtended, reloadedManager.extendOnce(reloaded.sessionId))
     }
+
+    @Test
+    fun `concurrent extendOnce only one succeeds`() {
+        val pass = grant(planned = 60, extension = 180)
+        val latch = java.util.concurrent.CountDownLatch(1)
+        val results = java.util.Collections.synchronizedList(mutableListOf<ExtendResult>())
+        val t1 = Thread {
+            latch.await()
+            results.add(manager.extendOnce(pass.sessionId))
+        }
+        val t2 = Thread {
+            latch.await()
+            results.add(manager.extendOnce(pass.sessionId))
+        }
+        t1.start(); t2.start()
+        latch.countDown()
+        t1.join(); t2.join()
+        assertEquals(2, results.size)
+        assertEquals(1, results.count { it is ExtendResult.Extended })
+        assertEquals(1, results.count { it is ExtendResult.AlreadyExtended })
+    }
 }
