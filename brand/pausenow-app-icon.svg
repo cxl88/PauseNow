@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" role="img" aria-labelledby="title">
+  <title id="title">停一下 PauseNow app icon</title>
+  <rect width="108" height="108" rx="26" fill="#176B5B"/>
+  <path d="M78 82C89 74 94 61 91 46C87 29 72 18 54 18C34 18 18 34 18 54C18 74 34 90 54 90C59 90 63 89 67 87" fill="none" stroke="#8FE6D7" stroke-width="7" stroke-linecap="round"/>
+  <rect x="36" y="39" width="12" height="32" rx="6" fill="#F7F7F2"/>
+  <rect x="60" y="39" width="12" height="32" rx="6" fill="#F7F7F2"/>
+</svg>
