@@ -1,7 +1,6 @@
 package com.pausenow.app.ui.screen
 
 import android.content.Context
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,9 +18,7 @@ import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Timer
@@ -34,8 +31,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -52,15 +47,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -73,6 +64,10 @@ import com.pausenow.app.ui.PauseGreen
 import com.pausenow.app.ui.PauseGreenLight
 import com.pausenow.app.ui.PauseMint
 import com.pausenow.app.ui.SpikeViewModel
+import com.pausenow.app.ui.component.AppIdentityIcon
+import com.pausenow.app.ui.component.MainDestination
+import com.pausenow.app.ui.component.MainNavigationBar
+import com.pausenow.app.ui.component.rememberAppIdentity
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -122,7 +117,14 @@ fun HomeScreen(
                 ),
             )
         },
-        bottomBar = { HomeBottomBar(onRules, onReport) },
+        bottomBar = {
+            MainNavigationBar(
+                selected = MainDestination.HOME,
+                onHome = {},
+                onRules = onRules,
+                onReport = onReport,
+            )
+        },
     ) { padding ->
         LazyColumn(
             modifier = Modifier.padding(padding),
@@ -256,12 +258,12 @@ private fun ActivePassCard(
                     }
                 }
             } else {
-                val app = rememberAppInfo(activePass.packageName)
+                val app = rememberAppIdentity(activePass.packageName)
                 val remainingSeconds = ((activePass.expiresAtMs - now) / 1_000).coerceAtLeast(0)
                 val total = (activePass.expiresAtMs - activePass.grantedAtMs).coerceAtLeast(1)
                 val progress = ((now - activePass.grantedAtMs).toFloat() / total).coerceIn(0f, 1f)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    AppIcon(app, 46.dp)
+                    AppIdentityIcon(app, 46.dp)
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(app.label, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -335,9 +337,9 @@ private fun RulesPreview(
             } else {
                 rules.take(3).forEach { rule ->
                     val packageName = rule.targetPackages.firstOrNull().orEmpty()
-                    val app = rememberAppInfo(packageName)
+                    val app = rememberAppIdentity(packageName)
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        AppIcon(app, 42.dp)
+                        AppIdentityIcon(app, 42.dp)
                         Spacer(Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
@@ -378,61 +380,6 @@ private fun HuaweiDeviceHint(context: Context) {
                     Text("应用权限")
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun HomeBottomBar(onRules: () -> Unit, onReport: () -> Unit) {
-    NavigationBar(containerColor = Color.White) {
-        NavigationBarItem(
-            selected = true,
-            onClick = {},
-            icon = { Icon(Icons.Filled.Home, contentDescription = null) },
-            label = { Text("首页") },
-        )
-        NavigationBarItem(
-            selected = false,
-            onClick = onRules,
-            icon = { Icon(Icons.Filled.Security, contentDescription = null) },
-            label = { Text("规则") },
-        )
-        NavigationBarItem(
-            selected = false,
-            onClick = onReport,
-            icon = { Icon(Icons.Filled.Assessment, contentDescription = null) },
-            label = { Text("今日") },
-        )
-    }
-}
-
-private data class DisplayApp(val label: String, val icon: ImageBitmap?)
-
-@Composable
-private fun rememberAppInfo(packageName: String): DisplayApp {
-    val context = LocalContext.current
-    return remember(packageName) {
-        if (packageName.isBlank()) return@remember DisplayApp("受保护应用", null)
-        runCatching {
-            val info = context.packageManager.getApplicationInfo(packageName, 0)
-            DisplayApp(
-                label = context.packageManager.getApplicationLabel(info).toString(),
-                icon = context.packageManager.getApplicationIcon(info).toBitmap(96, 96).asImageBitmap(),
-            )
-        }.getOrElse { DisplayApp(packageName.substringAfterLast('.'), null) }
-    }
-}
-
-@Composable
-private fun AppIcon(app: DisplayApp, size: Dp) {
-    Box(
-        modifier = Modifier.size(size).background(Color.White.copy(alpha = 0.92f), CircleShape),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (app.icon != null) {
-            Image(bitmap = app.icon, contentDescription = app.label, modifier = Modifier.size(size - 8.dp))
-        } else {
-            Icon(Icons.Filled.Security, contentDescription = null, tint = PauseGreen, modifier = Modifier.size(size - 16.dp))
         }
     }
 }
