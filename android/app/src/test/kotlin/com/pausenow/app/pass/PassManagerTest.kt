@@ -125,6 +125,15 @@ class PassManagerTest {
     }
 
     @Test
+    fun `extendOnce is rejected when rule does not allow an extension`() {
+        val pass = grant(planned = 60, extension = 0)
+
+        assertFalse(pass.canExtend())
+        assertEquals(ExtendResult.NotAllowed, manager.extendOnce(pass.sessionId))
+        assertEquals(0, manager.currentPass("com.example.app")!!.extensionCount)
+    }
+
+    @Test
     fun `extensionCount capped at 1 after reload`() {
         val pass = grant(planned = 60, extension = 180)
         manager.extendOnce(pass.sessionId)

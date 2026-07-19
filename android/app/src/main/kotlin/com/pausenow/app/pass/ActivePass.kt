@@ -26,7 +26,8 @@ data class ActivePass(
 
     fun isExpired(now: Long): Boolean = now >= expiresAtMs
 
-    fun canExtend(): Boolean = extensionCount < 1
+    /** 规则关闭延长时，延长时长为 0；它和“已经延长过”都不能再获得通行。 */
+    fun canExtend(): Boolean = extensionDurationSeconds > 0 && extensionCount < 1
 
     fun toJson(): JSONObject = JSONObject()
         .put("sessionId", sessionId)

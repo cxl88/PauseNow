@@ -33,6 +33,7 @@ class PassManager(
     /** R-006 Domain 层：extensionCount>=1 返回 AlreadyExtended。synchronized 保证并发只一次成功。 */
     fun extendOnce(sessionId: String): ExtendResult = synchronized(lock) {
         val pass = store.load()[sessionId] ?: return ExtendResult.NotFound
+        if (pass.extensionDurationSeconds <= 0) return ExtendResult.NotAllowed
         if (!pass.canExtend()) return ExtendResult.AlreadyExtended
         val now = clock()
         val base = if (pass.expiresAtMs > now) pass.expiresAtMs else now
@@ -66,6 +67,7 @@ data class GrantPassCommand(
 
 sealed interface ExtendResult {
     data object NotFound : ExtendResult
+    data object NotAllowed : ExtendResult
     data object AlreadyExtended : ExtendResult
     data class Extended(val pass: ActivePass) : ExtendResult
 }
