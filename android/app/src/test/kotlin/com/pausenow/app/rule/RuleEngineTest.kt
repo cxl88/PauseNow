@@ -1,6 +1,7 @@
 package com.pausenow.app.rule
 
 import com.pausenow.app.pass.ActivePass
+import com.pausenow.app.pass.PassPurpose
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -9,8 +10,23 @@ class RuleEngineTest {
 
     private val rule = ProtectionRule(
         id = "rule-1",
-        targetPackages = setOf("com.ss.android.ugc.aweme"),
-        passDurationMs = 5 * 60 * 1000L,
+        targetPackageName = "com.ss.android.ugc.aweme",
+        passDurationSeconds = 300,
+    )
+
+    private fun activePass(
+        pkg: String = "com.ss.android.ugc.aweme",
+        grantedAt: Long = 900_000L,
+        expiresAt: Long = 1_200_000L,
+    ) = ActivePass(
+        sessionId = "sess-1",
+        ruleId = "rule-1",
+        packageName = pkg,
+        purpose = PassPurpose.RELAX_BRIEFLY,
+        plannedDurationSeconds = 300,
+        extensionDurationSeconds = 180,
+        grantedAtMs = grantedAt,
+        expiresAtMs = expiresAt,
     )
 
     private fun input(
@@ -37,37 +53,23 @@ class RuleEngineTest {
 
     @Test
     fun `non-target package allowed`() {
-        assertEquals(
-            Decision.Allow,
-            RuleEngine.evaluate(input(packageName = "com.other.app")),
-        )
+        assertEquals(Decision.Allow, RuleEngine.evaluate(input(packageName = "com.other.app")))
     }
 
     @Test
     fun `target package without pass requires open intervention`() {
-        val decision = RuleEngine.evaluate(input(pass = null))
-        assertEquals(Decision.RequireOpenIntervention("rule-1"), decision)
+        assertEquals(Decision.RequireOpenIntervention("rule-1"), RuleEngine.evaluate(input(pass = null)))
     }
 
     @Test
     fun `target package with valid pass allowed`() {
-        val pass = ActivePass(
-            ruleId = "rule-1",
-            packageName = "com.ss.android.ugc.aweme",
-            grantedAtMs = 900_000L,
-            expiresAtMs = 1_200_000L,
-        )
+        val pass = activePass(grantedAt = 900_000L, expiresAt = 1_200_000L)
         assertEquals(Decision.Allow, RuleEngine.evaluate(input(pass = pass, now = 1_000_000L)))
     }
 
     @Test
     fun `target package with expired pass requires expired intervention`() {
-        val pass = ActivePass(
-            ruleId = "rule-1",
-            packageName = "com.ss.android.ugc.aweme",
-            grantedAtMs = 400_000L,
-            expiresAtMs = 500_000L,
-        )
+        val pass = activePass(grantedAt = 400_000L, expiresAt = 500_000L)
         assertEquals(
             Decision.RequireExpiredIntervention("rule-1"),
             RuleEngine.evaluate(input(pass = pass, now = 1_000_000L)),
@@ -76,12 +78,7 @@ class RuleEngineTest {
 
     @Test
     fun `pass for different package does not apply`() {
-        val pass = ActivePass(
-            ruleId = "rule-1",
-            packageName = "com.other.app",
-            grantedAtMs = 900_000L,
-            expiresAtMs = 1_200_000L,
-        )
+        val pass = activePass(pkg = "com.other.app", grantedAt = 900_000L, expiresAt = 1_200_000L)
         assertEquals(
             Decision.RequireOpenIntervention("rule-1"),
             RuleEngine.evaluate(input(pass = pass, now = 1_000_000L)),
@@ -89,35 +86,14 @@ class RuleEngineTest {
     }
 
     @Test
-    fun `highest priority rule wins`() {
-        val low = rule.copy(id = "low", priority = 1)
-        val high = ProtectionRule(
-            id = "high",
-            targetPackages = setOf("com.ss.android.ugc.aweme"),
-            passDurationMs = 60_000L,
-            priority = 10,
-        )
-        val decision = RuleEngine.evaluate(input(rules = listOf(low, high)))
-        assertEquals(Decision.RequireOpenIntervention("high"), decision)
-    }
-
-    @Test
     fun `disabled rules are skipped`() {
         val disabled = rule.copy(enabled = false)
-        assertEquals(
-            Decision.Allow,
-            RuleEngine.evaluate(input(rules = listOf(disabled))),
-        )
+        assertEquals(Decision.Allow, RuleEngine.evaluate(input(rules = listOf(disabled))))
     }
 
     @Test
     fun `expired decision carries rule id`() {
-        val pass = ActivePass(
-            ruleId = "rule-1",
-            packageName = "com.ss.android.ugc.aweme",
-            grantedAtMs = 0L,
-            expiresAtMs = 10L,
-        )
+        val pass = activePass(grantedAt = 0L, expiresAt = 10L)
         val decision = RuleEngine.evaluate(input(pass = pass, now = 1_000_000L))
         assertTrue(decision is Decision.RequireExpiredIntervention)
         assertEquals("rule-1", (decision as Decision.RequireExpiredIntervention).ruleId)

@@ -5,11 +5,11 @@ import android.content.Intent
 import android.util.Log
 import com.pausenow.app.report.InterventionEvent
 import com.pausenow.app.report.InterventionEventStore
+import com.pausenow.app.report.ProductEventType
 
 /**
- * 干预启动器（在检测循环中调用）。负责防重复 + 启动 [InterventionActivity]。
- * 用户在 Activity 的选择（放行/延长/结束）由 Activity 直接调 PassManager 并返回桌面/目标，
- * Activity onDestroy 调 [InterventionState.release] 释放互斥。
+ * 干预启动器（在检测循环中调用）。v3：传秒、record ProductEventType。
+ * 启动请求/被盖/冷却只记 Trace（阶段 3），首次 STARTED 记 visible 事件（阶段 3 改为 onResume 记）。
  */
 class InterventionLauncher(private val context: Context) {
     private val eventStore = InterventionEventStore(context.applicationContext)
@@ -17,38 +17,40 @@ class InterventionLauncher(private val context: Context) {
     fun launchOpen(
         packageName: String,
         ruleId: String,
-        passDurationMs: Long,
+        passDurationSeconds: Int,
+        extensionDurationSeconds: Int,
         cooldownMs: Long,
-    ): Boolean = launch(packageName, "open", cooldownMs) {
+    ): Boolean = launch(packageName, ProductEventType.OPEN_INTERVENTION_VISIBLE, ruleId, cooldownMs) {
         InterventionActivity.newIntent(
             context = context,
             mode = InterventionActivity.MODE_OPEN,
             packageName = packageName,
             ruleId = ruleId,
-            passDurationMs = passDurationMs,
-            extensionSeconds = 0,
+            passDurationSeconds = passDurationSeconds,
+            extensionDurationSeconds = extensionDurationSeconds,
         )
     }
 
     fun launchExpired(
         packageName: String,
         ruleId: String,
-        extensionSeconds: Int,
+        extensionDurationSeconds: Int,
         cooldownMs: Long,
-    ): Boolean = launch(packageName, "expired", cooldownMs) {
+    ): Boolean = launch(packageName, ProductEventType.EXPIRED_INTERVENTION_VISIBLE, ruleId, cooldownMs) {
         InterventionActivity.newIntent(
             context = context,
             mode = InterventionActivity.MODE_EXPIRED,
             packageName = packageName,
             ruleId = ruleId,
-            passDurationMs = 0L,
-            extensionSeconds = extensionSeconds,
+            passDurationSeconds = 0,
+            extensionDurationSeconds = extensionDurationSeconds,
         )
     }
 
     private inline fun launch(
         packageName: String,
-        type: String,
+        type: ProductEventType,
+        ruleId: String,
         cooldownMs: Long,
         buildIntent: () -> Intent,
     ): Boolean {
@@ -61,7 +63,7 @@ class InterventionLauncher(private val context: Context) {
                 val intent = buildIntent().apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
                 return try {
                     context.startActivity(intent)
-                    if (result == InterventionState.LaunchResult.STARTED) record(type, packageName)
+                    if (result == InterventionState.LaunchResult.STARTED) record(type, packageName, ruleId)
                     Log.i(TAG, "launched packageName=$packageName recover=${result == InterventionState.LaunchResult.RECOVER}")
                     true
                 } catch (e: Exception) {
@@ -73,8 +75,16 @@ class InterventionLauncher(private val context: Context) {
         }
     }
 
-    private fun record(type: String, packageName: String) {
-        eventStore.append(InterventionEvent(type, packageName, System.currentTimeMillis()))
+    private fun record(type: ProductEventType, packageName: String, ruleId: String) {
+        eventStore.append(
+            InterventionEvent(
+                eventId = "",
+                ruleId = ruleId,
+                packageName = packageName,
+                type = type,
+                occurredAtMs = System.currentTimeMillis(),
+            ),
+        )
     }
 
     private companion object {

@@ -55,12 +55,12 @@ fun RuleEditScreen(
 ) {
     val viewModel: RulesViewModel = viewModel()
     val existing = remember(ruleId) { if (ruleId == "new") null else viewModel.getRule(ruleId) }
-    var targetPackage by remember { mutableStateOf(existing?.targetPackages?.firstOrNull().orEmpty()) }
+    var targetPackage by remember { mutableStateOf(existing?.targetPackageName.orEmpty()) }
     var passMinutes by remember {
-        mutableStateOf(normalizePassMinutes(((existing?.passDurationMs ?: viewModel.defaultDurationMs()) / 60_000L).toInt()))
+        mutableStateOf(normalizePassMinutes((existing?.passDurationSeconds ?: viewModel.defaultPassDurationSeconds()) / 60))
     }
     var extensionMinutes by remember {
-        mutableStateOf(normalizeExtensionMinutes((existing?.extensionSeconds ?: viewModel.defaultExtensionSeconds()) / 60))
+        mutableStateOf(normalizeExtensionMinutes((existing?.extensionDurationSeconds ?: viewModel.defaultExtensionDurationSeconds()) / 60))
     }
     var enabled by remember { mutableStateOf(existing?.enabled ?: true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -195,10 +195,9 @@ fun RuleEditScreen(
                     viewModel.saveRule(
                         ProtectionRule(
                             id = existing?.id ?: viewModel.newRuleId(),
-                            name = "",
-                            targetPackages = setOf(pkg),
-                            passDurationMs = passMinutes * 60_000L,
-                            extensionSeconds = extensionMinutes * 60,
+                            targetPackageName = pkg,
+                            passDurationSeconds = passMinutes * 60,
+                            extensionDurationSeconds = extensionMinutes * 60,
                             enabled = if (existing == null) true else enabled,
                         ),
                     )

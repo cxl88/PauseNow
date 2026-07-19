@@ -1,49 +1,50 @@
 package com.pausenow.app.rule
 
 import com.pausenow.app.pass.ActivePass
-import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * 保护规则。阶段 3：用户可读名 + 每规则延长时长。
- * schedule / 每日限额仍属后续阶段。
+ * 保护规则（docs/09 §5.1）。v3：单值 targetPackageName、秒为单位、cachedAppLabel、时间戳、schemaVersion=3。
+ * 删除 v2 的 name/priority（仅迁移用）。R-001 同包名唯一。
  */
 data class ProtectionRule(
     val id: String,
-    val name: String = "",
-    val targetPackages: Set<String>,
-    val passDurationMs: Long,
-    val extensionSeconds: Int = 180,
+    val targetPackageName: String,
+    val cachedAppLabel: String = "",
+    val passDurationSeconds: Int,
+    val extensionDurationSeconds: Int = 0,
     val enabled: Boolean = true,
-    val priority: Int = 0,
+    val createdAtMs: Long = 0L,
+    val updatedAtMs: Long = 0L,
+    val schemaVersion: Int = 3,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("id", id)
-        .put("name", name)
-        .put("targetPackages", JSONArray(targetPackages.toList()))
-        .put("passDurationMs", passDurationMs)
-        .put("extensionSeconds", extensionSeconds)
+        .put("targetPackageName", targetPackageName)
+        .put("cachedAppLabel", cachedAppLabel)
+        .put("passDurationSeconds", passDurationSeconds)
+        .put("extensionDurationSeconds", extensionDurationSeconds)
         .put("enabled", enabled)
-        .put("priority", priority)
+        .put("createdAtMs", createdAtMs)
+        .put("updatedAtMs", updatedAtMs)
+        .put("schemaVersion", schemaVersion)
 
     companion object {
         fun fromJson(json: JSONObject): ProtectionRule = ProtectionRule(
             id = json.getString("id"),
-            name = json.optString("name", ""),
-            targetPackages = json.optJSONArray("targetPackages")?.let { arr ->
-                buildSet { for (i in 0 until arr.length()) add(arr.getString(i)) }
-            } ?: emptySet(),
-            passDurationMs = json.getLong("passDurationMs"),
-            extensionSeconds = json.optInt("extensionSeconds", 180),
+            targetPackageName = json.getString("targetPackageName"),
+            cachedAppLabel = json.optString("cachedAppLabel", ""),
+            passDurationSeconds = json.getInt("passDurationSeconds"),
+            extensionDurationSeconds = json.optInt("extensionDurationSeconds", 0),
             enabled = json.optBoolean("enabled", true),
-            priority = json.optInt("priority", 0),
+            createdAtMs = json.optLong("createdAtMs", 0L),
+            updatedAtMs = json.optLong("updatedAtMs", 0L),
+            schemaVersion = 3,
         )
     }
 }
 
-/**
- * Rule Engine 的输入。对应 docs/03 §6.1 优先级判定所需字段。
- */
+/** Rule Engine 输入（docs/03 §6.1）。 */
 data class EvaluationInput(
     val permissionsReady: Boolean,
     val packageName: String,
@@ -53,10 +54,7 @@ data class EvaluationInput(
     val now: Long,
 )
 
-/**
- * Rule Engine 的决策输出（按 docs/03 §6.2 伪代码，不产 END_AND_GO_HOME--
- * 返回桌面由 InterventionActivity 负责）。
- */
+/** Rule Engine 决策输出（docs/03 §6.2）。 */
 sealed interface Decision {
     data object Degraded : Decision
     data object Ignore : Decision
@@ -66,7 +64,7 @@ sealed interface Decision {
 }
 
 /**
- * 纯逻辑规则引擎，方便单元测试。事件线程串行调用。
+ * 纯逻辑规则引擎（docs/03 §6.2）。v3：targetPackageName 单值匹配，包名唯一后无优先级冲突。
  * 优先级：权限失效 -> Degraded；排除包 -> Ignore；非目标 -> Allow；
  * 有效通行 -> Allow；通行到期 -> RequireExpiredIntervention；默认 -> RequireOpenIntervention。
  */
@@ -77,8 +75,7 @@ object RuleEngine {
 
         val rule = input.rules
             .filter { it.enabled }
-            .filter { input.packageName in it.targetPackages }
-            .maxByOrNull { it.priority }
+            .firstOrNull { it.targetPackageName == input.packageName }
             ?: return Decision.Allow
 
         val pass = input.activePass

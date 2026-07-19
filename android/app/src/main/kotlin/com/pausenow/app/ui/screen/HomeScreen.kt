@@ -335,21 +335,21 @@ private fun RulesPreview(
                 Button(onClick = onManage, modifier = Modifier.fillMaxWidth()) { Text("添加保护应用") }
             } else {
                 rules.take(3).forEach { rule ->
-                    val packageName = rule.targetPackages.firstOrNull().orEmpty()
+                    val packageName = rule.targetPackageName
                     val app = rememberAppIdentity(packageName)
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                         AppIdentityIcon(app, 42.dp)
                         Spacer(Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                rule.name.ifBlank { app.label },
+                                rule.cachedAppLabel.ifBlank { app.label },
                                 style = MaterialTheme.typography.bodyLarge,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
-                                "通行 ${rule.passDurationMs / 60_000} 分钟 · 可延长 ${rule.extensionSeconds / 60} 分钟",
+                                "通行 ${rule.passDurationSeconds / 60} 分钟 · 可延长 ${rule.extensionDurationSeconds / 60} 分钟",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

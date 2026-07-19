@@ -12,17 +12,37 @@ class PassManagerTest {
     private class FakePassStore : PassStore {
         val map = mutableMapOf<String, ActivePass>()
         override fun load(): Map<String, ActivePass> = map.toMap()
-        override fun upsert(pass: ActivePass) { map[pass.packageName] = pass }
-        override fun remove(packageName: String) { map.remove(packageName) }
+        override fun upsert(pass: ActivePass) {
+            // 同包旧 entry 清理（与生产 SharedPreferencesPassStore 一致）
+            map.entries.removeIf { it.value.packageName == pass.packageName && it.key != pass.sessionId }
+            map[pass.sessionId] = pass
+        }
+        override fun remove(sessionId: String) { map.remove(sessionId) }
     }
 
     private var nowMs = 1_000_000L
     private val store = FakePassStore()
     private val manager = PassManager(store, clock = { nowMs })
 
+    private fun grant(
+        pkg: String = "com.example.app",
+        planned: Int = 300,
+        extension: Int = 180,
+        sessionId: String = "sess-${System.nanoTime()}",
+    ) = manager.grant(
+        GrantPassCommand(
+            sessionId = sessionId,
+            ruleId = "rule-1",
+            packageName = pkg,
+            purpose = PassPurpose.RELAX_BRIEFLY,
+            plannedDurationSeconds = planned,
+            extensionDurationSeconds = extension,
+        ),
+    )
+
     @Test
-    fun `grantPass creates pass expiring after duration`() {
-        val pass = manager.grantPass("com.example.app", "rule-1", 5 * 60 * 1000L)
+    fun `grant creates pass expiring after planned duration`() {
+        val pass = grant(planned = 300)
         assertEquals("rule-1", pass.ruleId)
         assertEquals("com.example.app", pass.packageName)
         assertEquals(1_000_000L, pass.grantedAtMs)
@@ -36,47 +56,45 @@ class PassManagerTest {
     }
 
     @Test
-    fun `extendPass on valid pass extends from original expiry`() {
-        val pass = manager.grantPass("com.example.app", "rule-1", 60_000L) // expires 1_060_000
-        nowMs = 1_020_000L // 未到期
-        val extended = manager.extendPass(pass, 180)
+    fun `extendOnce on valid pass extends from original expiry`() {
+        val pass = grant(planned = 60, extension = 180) // expires 1_060_000
+        nowMs = 1_020_000L
+        val result = manager.extendOnce(pass.sessionId)
+        assertTrue(result is ExtendResult.Extended)
+        val extended = (result as ExtendResult.Extended).pass
         assertEquals(1_060_000L + 180_000L, extended.expiresAtMs)
         assertEquals(1, extended.extensionCount)
-        assertEquals(extended, manager.currentPass("com.example.app"))
     }
 
     @Test
-    fun `extendPass on expired pass extends from now`() {
-        val pass = manager.grantPass("com.example.app", "rule-1", 60_000L) // expires 1_060_000
-        nowMs = 2_000_000L // 已过期
-        val extended = manager.extendPass(pass, 180)
-        // 从 now(2_000_000) 起算延长 180s，而不是从已过期的 1_060_000
+    fun `extendOnce on expired pass extends from now`() {
+        val pass = grant(planned = 60, extension = 180) // expires 1_060_000
+        nowMs = 2_000_000L
+        val extended = (manager.extendOnce(pass.sessionId) as ExtendResult.Extended).pass
         assertEquals(2_000_000L + 180_000L, extended.expiresAtMs)
         assertEquals(1, extended.extensionCount)
     }
 
     @Test
-    fun `endPass removes the pass`() {
-        manager.grantPass("com.example.app", "rule-1", 60_000L)
+    fun `end removes the pass`() {
+        val pass = grant()
         assertNotNull(manager.currentPass("com.example.app"))
-        manager.endPass("com.example.app")
+        manager.end(pass.sessionId, PassEndReason.USER_ENDED)
         assertNull(manager.currentPass("com.example.app"))
     }
 
     @Test
     fun `isExpired reflects clock`() {
-        val pass = manager.grantPass("com.example.app", "rule-1", 60_000L) // expires 1_060_000
+        val pass = grant(planned = 60) // expires 1_060_000
         nowMs = 1_050_000L
         assertFalse(manager.isExpired(pass))
         nowMs = 1_060_000L
-        assertTrue(manager.isExpired(pass))
-        nowMs = 1_100_000L
         assertTrue(manager.isExpired(pass))
     }
 
     @Test
     fun `pass persists across store reload`() {
-        manager.grantPass("com.example.app", "rule-1", 60_000L)
+        grant()
         val reloaded = PassManager(store, clock = { nowMs }).currentPass("com.example.app")
         assertNotNull(reloaded)
         assertEquals("rule-1", reloaded!!.ruleId)
@@ -84,10 +102,35 @@ class PassManagerTest {
 
     @Test
     fun `granting pass for same package overwrites previous`() {
-        manager.grantPass("com.example.app", "rule-1", 60_000L)
+        grant(sessionId = "sess-1")
         nowMs = 2_000_000L
-        manager.grantPass("com.example.app", "rule-1", 60_000L)
+        grant(sessionId = "sess-2")
         val current = manager.currentPass("com.example.app")
         assertEquals(2_000_000L, current!!.grantedAtMs)
+        assertEquals("sess-2", current.sessionId)
+    }
+
+    // R-006 三层测试（Domain + Store + 重启）
+    @Test
+    fun `extendOnce twice returns AlreadyExtended`() {
+        val pass = grant(planned = 60, extension = 180)
+        assertTrue(manager.extendOnce(pass.sessionId) is ExtendResult.Extended)
+        nowMs = 1_020_000L
+        assertEquals(ExtendResult.AlreadyExtended, manager.extendOnce(pass.sessionId))
+    }
+
+    @Test
+    fun `extendOnce on unknown session returns NotFound`() {
+        assertEquals(ExtendResult.NotFound, manager.extendOnce("nonexistent"))
+    }
+
+    @Test
+    fun `extensionCount capped at 1 after reload`() {
+        val pass = grant(planned = 60, extension = 180)
+        manager.extendOnce(pass.sessionId)
+        val reloadedManager = PassManager(store, clock = { nowMs })
+        val reloaded = reloadedManager.currentPass("com.example.app")!!
+        assertEquals(1, reloaded.extensionCount)
+        assertEquals(ExtendResult.AlreadyExtended, reloadedManager.extendOnce(reloaded.sessionId))
     }
 }

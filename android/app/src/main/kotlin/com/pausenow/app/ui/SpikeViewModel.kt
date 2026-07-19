@@ -15,11 +15,13 @@ import com.pausenow.app.intervention.ExpiryController
 import com.pausenow.app.model.DeviceSnapshot
 import com.pausenow.app.model.PermissionSnapshot
 import com.pausenow.app.pass.ActivePass
+import com.pausenow.app.pass.PassEndReason
 import com.pausenow.app.pass.PassManager
 import com.pausenow.app.pass.SharedPreferencesPassStore
 import com.pausenow.app.permissions.AndroidPermissionGateway
 import com.pausenow.app.report.InterventionEvent
 import com.pausenow.app.report.InterventionEventStore
+import com.pausenow.app.report.ProductEventType
 import com.pausenow.app.rule.ProtectionRule
 import com.pausenow.app.snapshot.SharedPreferencesSnapshotStore
 import com.pausenow.app.snapshot.SnapshotStore
@@ -107,9 +109,17 @@ class SpikeViewModel(application: Application) : AndroidViewModel(application) {
                 val activePass = activePasses.minByOrNull { it.expiresAtMs }
                 val todayEvents = interventionEventStore.todayEvents()
                 val today = TodaySummary(
-                    completedChoices = todayEvents.count { it.type == "grant" || it.type == "extend" || it.type == "end" },
-                    passes = todayEvents.count { it.type == "grant" },
-                    ended = todayEvents.count { it.type == "end" },
+                    completedChoices = todayEvents.count {
+                        it.type == ProductEventType.PASS_GRANTED ||
+                            it.type == ProductEventType.PASS_EXTENDED ||
+                            it.type == ProductEventType.END_AT_EXPIRY ||
+                            it.type == ProductEventType.EXIT_BEFORE_OPEN
+                    },
+                    passes = todayEvents.count { it.type == ProductEventType.PASS_GRANTED },
+                    ended = todayEvents.count {
+                        it.type == ProductEventType.END_AT_EXPIRY ||
+                            it.type == ProductEventType.EXIT_BEFORE_OPEN
+                    },
                 )
                 val passInfo = when {
                     activePasses.isEmpty() && allPasses.isEmpty() -> null
@@ -171,10 +181,9 @@ class SpikeViewModel(application: Application) : AndroidViewModel(application) {
             listOf(
                 ProtectionRule(
                     id = "default",
-                    name = trimmed,
-                    targetPackages = setOf(trimmed),
-                    passDurationMs = current.settings.passDurationMs,
-                    extensionSeconds = current.settings.extensionSeconds,
+                    targetPackageName = trimmed,
+                    passDurationSeconds = current.settings.defaultPassDurationSeconds,
+                    extensionDurationSeconds = current.settings.defaultExtensionDurationSeconds,
                 ),
             )
         }
@@ -188,16 +197,23 @@ class SpikeViewModel(application: Application) : AndroidViewModel(application) {
         val activePass = _state.value.activePass ?: return
         // 先从 UI 状态移除，避免用户快速连点时重复记录结束事件。
         _state.update { current ->
-            if (current.activePass?.packageName == activePass.packageName) {
+            if (current.activePass?.sessionId == activePass.sessionId) {
                 current.copy(activePass = null, currentPassInfo = null)
             } else {
                 current
             }
         }
-        passManager.endPass(activePass.packageName)
+        passManager.end(activePass.sessionId, PassEndReason.USER_ENDED)
         expiryController.cancelExpiry(activePass.packageName)
         interventionEventStore.append(
-            InterventionEvent("end", activePass.packageName, System.currentTimeMillis()),
+            InterventionEvent(
+                eventId = "",
+                sessionId = activePass.sessionId,
+                ruleId = activePass.ruleId,
+                packageName = activePass.packageName,
+                type = ProductEventType.END_AT_EXPIRY,
+                occurredAtMs = System.currentTimeMillis(),
+            ),
         )
         refresh()
     }

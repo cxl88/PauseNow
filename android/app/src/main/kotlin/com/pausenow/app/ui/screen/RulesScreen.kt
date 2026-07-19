@@ -137,7 +137,7 @@ private fun EmptyRules(modifier: Modifier, onAdd: () -> Unit) {
 
 @Composable
 private fun RuleRow(rule: ProtectionRule, onToggle: (Boolean) -> Unit, onEdit: () -> Unit) {
-    val packageName = rule.targetPackages.firstOrNull().orEmpty()
+    val packageName = rule.targetPackageName
     val app = rememberAppIdentity(packageName)
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onEdit),
@@ -173,6 +173,6 @@ private fun RuleRow(rule: ProtectionRule, onToggle: (Boolean) -> Unit, onEdit: (
 }
 
 private fun buildRuleSummary(rule: ProtectionRule): String {
-    val extension = if (rule.extensionSeconds <= 0) "不可延长" else "可延长 ${rule.extensionSeconds / 60} 分钟"
-    return "每次 ${rule.passDurationMs / 60_000} 分钟 · $extension"
+    val extension = if (rule.extensionDurationSeconds <= 0) "不可延长" else "可延长 ${rule.extensionDurationSeconds / 60} 分钟"
+    return "每次 ${rule.passDurationSeconds / 60} 分钟 · $extension"
 }

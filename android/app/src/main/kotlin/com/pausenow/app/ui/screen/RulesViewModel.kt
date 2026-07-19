@@ -24,7 +24,7 @@ class RulesViewModel(application: Application) : AndroidViewModel(application) {
 
     fun findRuleForPackage(packageName: String, excludingRuleId: String? = null): ProtectionRule? =
         _rules.value.firstOrNull { rule ->
-            rule.id != excludingRuleId && packageName in rule.targetPackages
+            rule.id != excludingRuleId && rule.targetPackageName == packageName
         }
 
     fun saveRule(rule: ProtectionRule) {
@@ -57,6 +57,6 @@ class RulesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun newRuleId(): String = "rule_" + System.currentTimeMillis()
-    fun defaultDurationMs(): Long = snapshotStore.read().settings.passDurationMs
-    fun defaultExtensionSeconds(): Int = snapshotStore.read().settings.extensionSeconds
+    fun defaultPassDurationSeconds(): Int = snapshotStore.read().settings.defaultPassDurationSeconds
+    fun defaultExtensionDurationSeconds(): Int = snapshotStore.read().settings.defaultExtensionDurationSeconds
 }

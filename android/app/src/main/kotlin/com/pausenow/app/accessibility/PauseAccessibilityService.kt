@@ -161,7 +161,7 @@ class PauseAccessibilityService : AccessibilityService() {
             Log.i(DETECT_TAG, "foreground=null")
             return
         }
-        val matchedRule = rules.filter { foreground in it.targetPackages }.maxByOrNull { it.priority }
+        val matchedRule = rules.firstOrNull { it.targetPackageName == foreground }
         Log.i(DETECT_TAG, "foreground=$foreground matchedRule=${matchedRule?.id}")
         if (matchedRule == null) return
 
@@ -181,11 +181,12 @@ class PauseAccessibilityService : AccessibilityService() {
         when (decision) {
             is Decision.RequireOpenIntervention ->
                 launcher.launchOpen(
-                    foreground, decision.ruleId, matchedRule.passDurationMs, REPEAT_COOLDOWN_MS,
+                    foreground, decision.ruleId, matchedRule.passDurationSeconds,
+                    matchedRule.extensionDurationSeconds, REPEAT_COOLDOWN_MS,
                 )
             is Decision.RequireExpiredIntervention ->
                 launcher.launchExpired(
-                    foreground, decision.ruleId, matchedRule.extensionSeconds, REPEAT_COOLDOWN_MS,
+                    foreground, decision.ruleId, matchedRule.extensionDurationSeconds, REPEAT_COOLDOWN_MS,
                 )
             else -> Unit
         }

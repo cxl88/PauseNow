@@ -65,7 +65,7 @@ fun AppPickerScreen(
     }
 
     val protectedRules = remember(rules) {
-        rules.flatMap { rule -> rule.targetPackages.map { packageName -> packageName to rule.id } }.toMap()
+        rules.associate { rule -> rule.targetPackageName to rule.id }
     }
     val filtered = remember(apps, query) {
         apps.filter { app ->

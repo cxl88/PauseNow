@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import com.pausenow.app.report.InterventionEvent
 import com.pausenow.app.report.InterventionEventStore
+import com.pausenow.app.report.ProductEventType
 import com.pausenow.app.ui.PauseGreen
 import com.pausenow.app.ui.PauseGreenLight
 import com.pausenow.app.ui.PauseMint
@@ -209,30 +210,41 @@ private data class AppReport(val packageName: String, val passes: Int, val exten
 private fun buildReport(events: List<InterventionEvent>): ReportUiModel {
     val zone = ZoneId.systemDefault()
     val today = LocalDate.now(zone)
-    val actionEvents = events.filter { it.type == "grant" || it.type == "extend" || it.type == "end" }
-    fun InterventionEvent.date(): LocalDate = Instant.ofEpochMilli(timestamp).atZone(zone).toLocalDate()
+    val actionEvents = events.filter {
+        it.type == ProductEventType.PASS_GRANTED ||
+            it.type == ProductEventType.PASS_EXTENDED ||
+            it.type == ProductEventType.END_AT_EXPIRY ||
+            it.type == ProductEventType.EXIT_BEFORE_OPEN
+    }
+    fun InterventionEvent.date(): LocalDate = Instant.ofEpochMilli(occurredAtMs).atZone(zone).toLocalDate()
     val todayEvents = actionEvents.filter { it.date() == today }
     val trend = (6 downTo 0).map { offset ->
         val date = today.minusDays(offset.toLong())
         DayCount(
             label = if (offset == 0) "今天" else date.format(DateTimeFormatter.ofPattern("M/d")),
-            count = actionEvents.count { it.type == "end" && it.date() == date },
+            count = actionEvents.count {
+                (it.type == ProductEventType.END_AT_EXPIRY || it.type == ProductEventType.EXIT_BEFORE_OPEN) && it.date() == date
+            },
         )
     }
     val apps = todayEvents.groupBy { it.packageName }.map { (packageName, appEvents) ->
         AppReport(
             packageName = packageName,
-            passes = appEvents.count { it.type == "grant" },
-            extensions = appEvents.count { it.type == "extend" },
-            ended = appEvents.count { it.type == "end" },
+            passes = appEvents.count { it.type == ProductEventType.PASS_GRANTED },
+            extensions = appEvents.count { it.type == ProductEventType.PASS_EXTENDED },
+            ended = appEvents.count {
+                it.type == ProductEventType.END_AT_EXPIRY || it.type == ProductEventType.EXIT_BEFORE_OPEN
+            },
         )
     }.sortedByDescending { it.ended }
 
     return ReportUiModel(
         completedToday = todayEvents.size,
-        passesToday = todayEvents.count { it.type == "grant" },
-        extensionsToday = todayEvents.count { it.type == "extend" },
-        endedToday = todayEvents.count { it.type == "end" },
+        passesToday = todayEvents.count { it.type == ProductEventType.PASS_GRANTED },
+        extensionsToday = todayEvents.count { it.type == ProductEventType.PASS_EXTENDED },
+        endedToday = todayEvents.count {
+            it.type == ProductEventType.END_AT_EXPIRY || it.type == ProductEventType.EXIT_BEFORE_OPEN
+        },
         trend = trend,
         apps = apps,
     )
