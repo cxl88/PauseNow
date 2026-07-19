@@ -56,56 +56,11 @@ class InterventionTraceStore(context: Context) {
 
     private fun readAll(): List<InterventionTrace> {
         val raw = prefs.getString(KEY, null) ?: return emptyList()
-        return try {
-            val arr = JSONArray(raw)
-            buildList {
-                for (i in 0 until arr.length()) {
-                    add(parseTrace(arr.getJSONObject(i)))
-                }
-            }
-        } catch (_: JSONException) {
-            emptyList()
-        }
+        return TraceSerializer.parse(raw)
     }
 
-    private fun parseTrace(o: JSONObject): InterventionTrace = InterventionTrace(
-        traceId = o.getString("traceId"),
-        ruleId = o.optString("ruleId", "").ifBlank { null },
-        sessionId = o.optString("sessionId", "").ifBlank { null },
-        packageName = o.getString("packageName"),
-        mode = runCatching { InterventionMode.valueOf(o.optString("mode", "OPEN")) }.getOrDefault(InterventionMode.OPEN),
-        detectedAtMs = o.getLong("detectedAtMs"),
-        decisionAtMs = o.optLong("decisionAtMs", 0L).takeIf { it > 0 },
-        launchRequestedAtMs = o.optLong("launchRequestedAtMs", 0L).takeIf { it > 0 },
-        visibleAtMs = o.optLong("visibleAtMs", 0L).takeIf { it > 0 },
-        actionAtMs = o.optLong("actionAtMs", 0L).takeIf { it > 0 },
-        launchResult = o.optString("launchResult", "").ifBlank { null }?.let {
-            runCatching { LaunchResultType.valueOf(it) }.getOrNull()
-        },
-        actionResult = o.optString("actionResult", "").ifBlank { null }?.let {
-            runCatching { ActionResultType.valueOf(it) }.getOrNull()
-        },
-    )
-
     private fun write(traces: List<InterventionTrace>) {
-        val arr = JSONArray()
-        traces.forEach { t ->
-            val o = JSONObject()
-                .put("traceId", t.traceId)
-                .put("packageName", t.packageName)
-                .put("mode", t.mode.name)
-                .put("detectedAtMs", t.detectedAtMs)
-            t.ruleId?.let { o.put("ruleId", it) }
-            t.sessionId?.let { o.put("sessionId", it) }
-            t.decisionAtMs?.let { o.put("decisionAtMs", it) }
-            t.launchRequestedAtMs?.let { o.put("launchRequestedAtMs", it) }
-            t.visibleAtMs?.let { o.put("visibleAtMs", it) }
-            t.actionAtMs?.let { o.put("actionAtMs", it) }
-            t.launchResult?.let { o.put("launchResult", it.name) }
-            t.actionResult?.let { o.put("actionResult", it.name) }
-            arr.put(o)
-        }
-        prefs.edit().putString(KEY, arr.toString()).apply()
+        prefs.edit().putString(KEY, TraceSerializer.serialize(traces)).apply()
     }
 
     private companion object {
