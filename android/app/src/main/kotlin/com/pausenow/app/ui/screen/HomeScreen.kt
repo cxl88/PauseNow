@@ -58,6 +58,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.pausenow.app.pass.ActivePass
 import com.pausenow.app.permissions.AndroidPermissionGateway
+import com.pausenow.app.model.ProtectionHealth
 import com.pausenow.app.rule.ProtectionRule
 import com.pausenow.app.ui.PauseGreen
 import com.pausenow.app.ui.PauseGreenLight
@@ -130,7 +131,7 @@ fun HomeScreen(
             contentPadding = PaddingValues(horizontal = 18.dp, vertical = 18.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            item { ProtectionHero(state.permissions.usageAccessGranted && state.permissions.accessibilityEnabled) }
+            item { ProtectionHero(state.protectionHealth) }
             if (!state.permissions.usageAccessGranted || !state.permissions.accessibilityEnabled) {
                 item {
                     PermissionActionsCard(
@@ -164,7 +165,9 @@ fun HomeScreen(
 }
 
 @Composable
-private fun ProtectionHero(ready: Boolean) {
+private fun ProtectionHero(health: ProtectionHealth) {
+    val ready = !health.isBlocking
+    val issue = health.blockingIssues.firstOrNull()?.title ?: health.warnings.firstOrNull()?.title
     Card(
         colors = CardDefaults.cardColors(containerColor = PauseGreenLight),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -187,7 +190,7 @@ private fun ProtectionHero(ready: Boolean) {
             Spacer(Modifier.width(14.dp))
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
-                    if (ready) "保护正在运行" else "完成设置，开始保护",
+                    if (ready) "保护正在运行" else (issue ?: "完成设置，开始保护"),
                     style = MaterialTheme.typography.titleLarge,
                     color = PauseGreen,
                 )

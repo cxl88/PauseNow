@@ -27,6 +27,9 @@ import com.pausenow.app.permissions.AndroidPermissionGateway
 import com.pausenow.app.rule.Decision
 import com.pausenow.app.rule.EvaluationInput
 import com.pausenow.app.rule.ProtectionRule
+import com.pausenow.app.report.InterventionMode
+import com.pausenow.app.report.InterventionTrace
+import com.pausenow.app.report.InterventionTraceStore
 import com.pausenow.app.rule.RuleEngine
 import com.pausenow.app.snapshot.SharedPreferencesSnapshotStore
 import com.pausenow.app.snapshot.SnapshotStore
@@ -40,6 +43,7 @@ class PauseAccessibilityService : AccessibilityService() {
     private lateinit var launcher: InterventionLauncher
     private lateinit var expiryController: ExpiryController
     private lateinit var permissionGateway: AndroidPermissionGateway
+    private lateinit var traceStore: InterventionTraceStore
     private val detectionHandler = Handler(Looper.getMainLooper())
 
     override fun onServiceConnected() {
@@ -51,6 +55,7 @@ class PauseAccessibilityService : AccessibilityService() {
         launcher = InterventionLauncher(applicationContext)
         expiryController = ExpiryController(applicationContext)
         permissionGateway = AndroidPermissionGateway(applicationContext)
+        traceStore = InterventionTraceStore(applicationContext)
         promoteToForeground()
         startDetectionLoop()
         Log.i(TAG, "serviceConnected=true contentRetrieval=false foreground=true detection=true")
@@ -179,15 +184,39 @@ class PauseAccessibilityService : AccessibilityService() {
         )
         Log.i(DETECT_TAG, "decision=$decision passExpired=${pass != null && pass.isExpired(now)}")
         when (decision) {
-            is Decision.RequireOpenIntervention ->
+            is Decision.RequireOpenIntervention -> {
+                val traceId = "trace_${now}_${foreground.hashCode()}"
+                traceStore.appendOrUpdate(
+                    InterventionTrace(
+                        traceId = traceId,
+                        ruleId = decision.ruleId,
+                        packageName = foreground,
+                        mode = InterventionMode.OPEN,
+                        detectedAtMs = now,
+                        decisionAtMs = now,
+                    ),
+                )
                 launcher.launchOpen(
                     foreground, decision.ruleId, matchedRule.passDurationSeconds,
-                    matchedRule.extensionDurationSeconds, REPEAT_COOLDOWN_MS,
+                    matchedRule.extensionDurationSeconds, REPEAT_COOLDOWN_MS, traceId,
                 )
-            is Decision.RequireExpiredIntervention ->
+            }
+            is Decision.RequireExpiredIntervention -> {
+                val traceId = "trace_${now}_${foreground.hashCode()}"
+                traceStore.appendOrUpdate(
+                    InterventionTrace(
+                        traceId = traceId,
+                        ruleId = decision.ruleId,
+                        packageName = foreground,
+                        mode = InterventionMode.EXPIRED,
+                        detectedAtMs = now,
+                        decisionAtMs = now,
+                    ),
+                )
                 launcher.launchExpired(
-                    foreground, decision.ruleId, matchedRule.extensionDurationSeconds, REPEAT_COOLDOWN_MS,
+                    foreground, decision.ruleId, matchedRule.extensionDurationSeconds, REPEAT_COOLDOWN_MS, traceId,
                 )
+            }
             else -> Unit
         }
     }

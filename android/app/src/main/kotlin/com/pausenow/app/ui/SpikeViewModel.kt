@@ -14,6 +14,8 @@ import com.pausenow.app.events.ForegroundEventBus
 import com.pausenow.app.intervention.ExpiryController
 import com.pausenow.app.model.DeviceSnapshot
 import com.pausenow.app.model.PermissionSnapshot
+import com.pausenow.app.model.ProtectionHealth
+import com.pausenow.app.model.ProtectionHealthBuilder
 import com.pausenow.app.pass.ActivePass
 import com.pausenow.app.pass.PassEndReason
 import com.pausenow.app.pass.PassManager
@@ -56,6 +58,7 @@ class SpikeViewModel(application: Application) : AndroidViewModel(application) {
         val currentPassInfo: String? = null,
         val activePass: ActivePass? = null,
         val today: TodaySummary = TodaySummary(),
+        val protectionHealth: ProtectionHealth = ProtectionHealth(emptyList(), emptyList(), 0, emptyList()),
         val error: String? = null,
     )
 
@@ -134,6 +137,12 @@ class SpikeViewModel(application: Application) : AndroidViewModel(application) {
                         "通行中 ${activePasses.size} 个，最近到期 ${remaining}s"
                     }
                 }
+                val health = ProtectionHealthBuilder.build(
+                    usageAccessGranted = permissionMap["usageAccessGranted"] == true,
+                    accessibilityEnabled = permissionMap["accessibilityEnabled"] == true,
+                    rules = snapshot.rules,
+                    activePasses = activePasses,
+                )
                 _state.update {
                     it.copy(
                         loading = false,
@@ -144,6 +153,7 @@ class SpikeViewModel(application: Application) : AndroidViewModel(application) {
                         currentPassInfo = passInfo,
                         activePass = activePass,
                         today = today,
+                        protectionHealth = health,
                     )
                 }
             } catch (error: Exception) {

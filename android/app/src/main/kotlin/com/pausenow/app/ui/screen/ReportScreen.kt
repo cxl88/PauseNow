@@ -88,7 +88,7 @@ fun ReportScreen(onHome: () -> Unit, onRules: () -> Unit) {
             contentPadding = PaddingValues(horizontal = 18.dp, vertical = 18.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            item { ReportHero(report.endedToday) }
+            item { ReportHero(report.endedToday, report.stopRate) }
             item { TodayMetrics(report) }
             item { SevenDayTrend(report.trend) }
             item { Text("按应用", style = MaterialTheme.typography.titleMedium) }
@@ -111,7 +111,7 @@ fun ReportScreen(onHome: () -> Unit, onRules: () -> Unit) {
 }
 
 @Composable
-private fun ReportHero(endedToday: Int) {
+private fun ReportHero(endedToday: Int, stopRate: Double?) {
     Card(
         colors = CardDefaults.cardColors(containerColor = PauseGreenLight),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -119,6 +119,14 @@ private fun ReportHero(endedToday: Int) {
         Column(Modifier.fillMaxWidth().padding(22.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("主动停下", style = MaterialTheme.typography.bodyLarge, color = PauseGreen)
             Text("$endedToday 次", fontSize = 38.sp, lineHeight = 44.sp, fontWeight = FontWeight.Bold, color = PauseGreen)
+            // docs/09 §6.2：样本>=3 才显示主动停下率
+            stopRate?.let {
+                Text(
+                    "主动停下率 ${"%.0f".format(it * 100)}%",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = PauseGreen,
+                )
+            }
             Text(
                 if (endedToday > 0) "每一次主动结束，都比无意识地继续更重要。" else "今天仍可以从一次主动结束开始。",
                 style = MaterialTheme.typography.bodyMedium,
@@ -134,9 +142,9 @@ private fun TodayMetrics(report: ReportUiModel) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text("今日选择", style = MaterialTheme.typography.titleMedium)
             Row(modifier = Modifier.fillMaxWidth()) {
-                ReportMetric(report.completedToday, "完成选择", Modifier.weight(1f))
+                ReportMetric(report.interventionsToday, "干预次数", Modifier.weight(1f))
+                ReportMetric(report.endedToday, "主动停下", Modifier.weight(1f))
                 ReportMetric(report.passesToday, "临时通行", Modifier.weight(1f))
-                ReportMetric(report.extensionsToday, "延长", Modifier.weight(1f))
             }
         }
     }
@@ -200,6 +208,8 @@ private data class ReportUiModel(
     val passesToday: Int,
     val extensionsToday: Int,
     val endedToday: Int,
+    val interventionsToday: Int,
+    val stopRate: Double?, // 样本>=3 才有值（docs/09 §6.2）
     val trend: List<DayCount>,
     val apps: List<AppReport>,
 )
@@ -210,13 +220,18 @@ private data class AppReport(val packageName: String, val passes: Int, val exten
 private fun buildReport(events: List<InterventionEvent>): ReportUiModel {
     val zone = ZoneId.systemDefault()
     val today = LocalDate.now(zone)
+    fun InterventionEvent.date(): LocalDate = Instant.ofEpochMilli(occurredAtMs).atZone(zone).toLocalDate()
+    val todayAll = events.filter { it.date() == today }
+    val interventionsToday = todayAll.count {
+        it.type == ProductEventType.OPEN_INTERVENTION_VISIBLE ||
+            it.type == ProductEventType.EXPIRED_INTERVENTION_VISIBLE
+    }
     val actionEvents = events.filter {
         it.type == ProductEventType.PASS_GRANTED ||
             it.type == ProductEventType.PASS_EXTENDED ||
             it.type == ProductEventType.END_AT_EXPIRY ||
             it.type == ProductEventType.EXIT_BEFORE_OPEN
     }
-    fun InterventionEvent.date(): LocalDate = Instant.ofEpochMilli(occurredAtMs).atZone(zone).toLocalDate()
     val todayEvents = actionEvents.filter { it.date() == today }
     val trend = (6 downTo 0).map { offset ->
         val date = today.minusDays(offset.toLong())
@@ -237,14 +252,19 @@ private fun buildReport(events: List<InterventionEvent>): ReportUiModel {
             },
         )
     }.sortedByDescending { it.ended }
+    val endedToday = todayEvents.count {
+        it.type == ProductEventType.END_AT_EXPIRY || it.type == ProductEventType.EXIT_BEFORE_OPEN
+    }
+    // docs/09 §6.2：样本<3 不显示百分比
+    val stopRate = if (interventionsToday >= 3) endedToday.toDouble() / interventionsToday else null
 
     return ReportUiModel(
         completedToday = todayEvents.size,
         passesToday = todayEvents.count { it.type == ProductEventType.PASS_GRANTED },
         extensionsToday = todayEvents.count { it.type == ProductEventType.PASS_EXTENDED },
-        endedToday = todayEvents.count {
-            it.type == ProductEventType.END_AT_EXPIRY || it.type == ProductEventType.EXIT_BEFORE_OPEN
-        },
+        endedToday = endedToday,
+        interventionsToday = interventionsToday,
+        stopRate = stopRate,
         trend = trend,
         apps = apps,
     )

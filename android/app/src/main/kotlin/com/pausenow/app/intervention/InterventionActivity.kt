@@ -8,7 +8,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -33,21 +32,26 @@ import com.pausenow.app.pass.PassEndReason
 import com.pausenow.app.pass.PassManager
 import com.pausenow.app.pass.PassPurpose
 import com.pausenow.app.pass.SharedPreferencesPassStore
+import com.pausenow.app.report.ActionResultType
 import com.pausenow.app.report.InterventionEvent
 import com.pausenow.app.report.InterventionEventStore
+import com.pausenow.app.report.InterventionTraceStore
 import com.pausenow.app.report.ProductEventType
 
 /**
  * 干预页（docs/09 §4 状态机）。
  * - OPEN：选择使用目的（R-004）后放行，或"先不打开"（EXIT_BEFORE_OPEN）。
  * - EXPIRED：未用过延长则可延长一次（R-006），否则只能结束。
+ * v3：onResume 埋 visibleAtMs，onAction 埋 actionAtMs/actionResult（Trace）。
  */
 class InterventionActivity : ComponentActivity() {
 
     private lateinit var targetPackage: String
+    private var traceId: String = ""
     private val passManager by lazy { PassManager(SharedPreferencesPassStore(applicationContext)) }
     private val expiryController by lazy { ExpiryController(applicationContext) }
     private val eventStore by lazy { InterventionEventStore(applicationContext) }
+    private val traceStore by lazy { InterventionTraceStore(applicationContext) }
 
     private fun record(
         type: ProductEventType,
@@ -79,12 +83,13 @@ class InterventionActivity : ComponentActivity() {
             finish()
             return
         }
+        traceId = intent?.getStringExtra(EXTRA_TRACE_ID).orEmpty()
         val mode = intent?.getStringExtra(EXTRA_MODE) ?: MODE_OPEN
         val ruleId = intent?.getStringExtra(EXTRA_RULE_ID) ?: "default"
         val passDurationSeconds = intent?.getIntExtra(EXTRA_PASS_DURATION, 300) ?: 300
         val extensionDurationSeconds = intent?.getIntExtra(EXTRA_EXTENSION, 180) ?: 180
         val currentPass = passManager.currentPass(targetPackage)
-        val canExtend = currentPass?.canExtend() == true // R-006 UI：extensionCount<1 才显示延长
+        val canExtend = currentPass?.canExtend() == true
 
         setContent {
             MaterialTheme {
@@ -115,6 +120,7 @@ class InterventionActivity : ComponentActivity() {
                             passDurationSeconds,
                             purpose,
                         )
+                        traceAction(ActionResultType.GRANTED)
                         returnToTarget(targetPackage)
                         InterventionState.release(targetPackage)
                         finish()
@@ -132,8 +138,9 @@ class InterventionActivity : ComponentActivity() {
                                         ruleId,
                                         pass.extensionDurationSeconds,
                                     )
+                                    traceAction(ActionResultType.EXTENDED)
                                 }
-                                else -> Unit // AlreadyExtended / NotFound：R-006 不再延长
+                                else -> Unit
                             }
                         }
                         returnToTarget(targetPackage)
@@ -144,12 +151,14 @@ class InterventionActivity : ComponentActivity() {
                         currentPass?.let { passManager.end(it.sessionId, PassEndReason.USER_ENDED) }
                         expiryController.cancelExpiry(targetPackage)
                         record(ProductEventType.END_AT_EXPIRY, targetPackage, currentPass?.sessionId, ruleId)
+                        traceAction(ActionResultType.ENDED)
                         returnToDesktop()
                         InterventionState.release(targetPackage)
                         finish()
                     },
                     onExitBeforeOpen = {
                         record(ProductEventType.EXIT_BEFORE_OPEN, targetPackage, ruleId = ruleId)
+                        traceAction(ActionResultType.EXITED_BEFORE_OPEN)
                         returnToDesktop()
                         InterventionState.release(targetPackage)
                         finish()
@@ -161,7 +170,10 @@ class InterventionActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (::targetPackage.isInitialized) InterventionState.onShowing(targetPackage, true)
+        if (::targetPackage.isInitialized) {
+            InterventionState.onShowing(targetPackage, true)
+            if (traceId.isNotEmpty()) traceStore.updateVisible(traceId, System.currentTimeMillis())
+        }
     }
 
     override fun onPause() {
@@ -174,6 +186,10 @@ class InterventionActivity : ComponentActivity() {
             InterventionState.release(targetPackage)
         }
         super.onDestroy()
+    }
+
+    private fun traceAction(result: ActionResultType) {
+        if (traceId.isNotEmpty()) traceStore.updateAction(traceId, System.currentTimeMillis(), result)
     }
 
     private fun returnToTarget(packageName: String) {
@@ -200,6 +216,7 @@ class InterventionActivity : ComponentActivity() {
         private const val EXTRA_MODE = "pausenow.intervention.mode"
         private const val EXTRA_PACKAGE = "pausenow.intervention.package"
         private const val EXTRA_RULE_ID = "pausenow.intervention.rule_id"
+        private const val EXTRA_TRACE_ID = "pausenow.intervention.trace_id"
         private const val EXTRA_PASS_DURATION = "pausenow.intervention.pass_duration_seconds"
         private const val EXTRA_EXTENSION = "pausenow.intervention.extension_seconds"
 
@@ -210,10 +227,12 @@ class InterventionActivity : ComponentActivity() {
             ruleId: String,
             passDurationSeconds: Int,
             extensionDurationSeconds: Int,
+            traceId: String,
         ): Intent = Intent(context, InterventionActivity::class.java).apply {
             putExtra(EXTRA_MODE, mode)
             putExtra(EXTRA_PACKAGE, packageName)
             putExtra(EXTRA_RULE_ID, ruleId)
+            putExtra(EXTRA_TRACE_ID, traceId)
             putExtra(EXTRA_PASS_DURATION, passDurationSeconds)
             putExtra(EXTRA_EXTENSION, extensionDurationSeconds)
         }
