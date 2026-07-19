@@ -14,8 +14,8 @@ class RulesViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = RuleRepositoryImpl(snapshotStore)
     val rules: StateFlow<List<ProtectionRule>> = repository.observeRules()
 
-    /** repository Flow 已实时广播，保留以兼容 ON_RESUME 调用。 */
-    fun load() = Unit
+    /** ON_RESUME 调用：重新从 Store 读取规则（多 Repository 实例不共享内存状态）。 */
+    fun load() = repository.reload()
 
     fun getRule(ruleId: String): ProtectionRule? = repository.getRule(ruleId)
 

@@ -66,4 +66,9 @@ class RuleRepositoryImpl(private val store: SnapshotStore) : RuleRepository {
         store.write(snapshot.copy(rules = rules, updatedAt = System.currentTimeMillis()))
         _rules.value = rules
     }
+
+    /** 重新从 Store 读取并广播（用于 ON_RESUME 刷新，弥补多 Repository 实例不共享内存状态）。 */
+    fun reload() {
+        _rules.value = store.read().rules
+    }
 }
