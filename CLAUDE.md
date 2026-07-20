@@ -131,9 +131,11 @@ When editing detection code, keep it observable-and-record-only.
 
 ## Repo layout gotchas
 
-- **`RuoYi-Vue-master/`** - an unrelated SpringBoot+Vue (RuoYi v3.9.2) Java scaffold. It is *not* part of the Android build and *not* wired into the app. The architecture doc explicitly says don't build a server prematurely. Treat it as parked/unrelated unless the user says otherwise.
+- **`android/`** - the active build: pure Kotlin native Android app (Jetpack Compose + Kotlin control engine, single process, local-first). This is the current mainline.
+- **`deliberate-app/`** - the project marketing/landing site (Bun + web stack) for product promotion. Not part of the Android build.
+- **`server/`** - the future backend service (RuoYi v3.9.2 SpringBoot+Vue scaffold). Will provide API for the app/frontend in later stages; not yet wired into the app. The architecture doc says don't build a server prematurely, so treat as parked until its stage.
 - **`project.yml`, `Configuration/`, `docs/technical-solution.md`, `docs/day-1-3-acceptance.md`, `docs/family-controls-entitlement.md`** - legacy iOS Screen Time / XcodeGen exploration. Not the current Android route.
-- The old Flutter artifacts (`lib/`, `test/`, `pubspec.*`, `.metadata`, `analysis_options.yaml`) were removed in the native pivot. The active build is the `android/` Gradle project only.
+- The old Flutter artifacts (`lib/`, `test/`, `pubspec.*`, `.metadata`, `analysis_options.yaml`) were removed in the native pivot.
 - **`docs/evidence/`** is gitignored (contains device serials/build fingerprints from real-device runs).
 
 ## Roadmap & stage gate
